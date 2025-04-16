@@ -10,6 +10,7 @@ import { EnhancedPaint } from "@/components/enhanced-paint"
 import { TypewriterTool } from "@/components/typewriter-tool"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { StickyNotePreview } from "@/components/sticky-note-preview"
 
 // Define the sticky note type
 interface Note {
@@ -647,6 +648,17 @@ export default function WhiteboardApp() {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
+        {/* Sticky Note Preview - Moved outside the transformed container */}
+        {activeTool === "sticky" && (
+          <StickyNotePreview
+            position={{
+              x: mousePosition.x * zoom + pan.x,
+              y: mousePosition.y * zoom + pan.y
+            }}
+            zoom={zoom}
+          />
+        )}
+
         {/* Canvas Container - this is the zoomable/pannable area */}
         <div
           style={{
@@ -682,8 +694,8 @@ export default function WhiteboardApp() {
             onSelectStroke={handleStrokeClick}
             selectedStrokeId={selectedStrokeId}
             alwaysSelectable={true}
-            stickyToolActive={activeTool === "sticky"} // Disable paint interaction when sticky tool is active
-            deleteStrokeRef={deleteStrokeRef} // Pass the delete stroke ref
+            stickyToolActive={activeTool === "sticky"}
+            deleteStrokeRef={deleteStrokeRef}
           />
 
           {/* Render all sticky notes */}
