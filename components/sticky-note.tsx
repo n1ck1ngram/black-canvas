@@ -1,8 +1,9 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, memo } from "react"
 import { cn } from "@/lib/utils"
+import { Trash2 } from "lucide-react"
 
 export interface StickyNoteProps {
   id: string
@@ -13,11 +14,13 @@ export interface StickyNoteProps {
   onSelect: () => void
   onContentChange: (content: string) => void
   onPositionChange: (position: { x: number; y: number }) => void
+  onDelete?: () => void
   zoom?: number
   screenToCanvas?: (screenX: number, screenY: number) => { x: number; y: number }
 }
 
-export function StickyNote({
+// Define the component logic
+const StickyNoteComponent = ({
   id,
   content,
   position,
@@ -26,9 +29,13 @@ export function StickyNote({
   onSelect,
   onContentChange,
   onPositionChange,
+  onDelete,
   zoom = 1,
   screenToCanvas = (x, y) => ({ x, y }),
-}: StickyNoteProps) {
+}: StickyNoteProps) => {
+  // Log the received isSelected prop on each render - REMOVED for clarity
+  // console.log(`[StickyNote ${id}] Rendering - isSelected prop: ${isSelected}`);
+  
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isEditing, setIsEditing] = useState(false)
@@ -42,37 +49,39 @@ export function StickyNote({
     }
   }, [isEditing])
 
-  // Modify the handleMouseDown function to ensure it properly stops propagation
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!noteRef.current) return
-
-    // Always stop propagation to prevent canvas click when clicking on a note
-    e.stopPropagation()
-
-    // If already selected, enter edit mode
-    if (isSelected && !isEditing) {
-      setIsEditing(true)
-      return
-    }
-
-    // First click selects the note
+  // Exit edit mode when the note is deselected
+  useEffect(() => {
     if (!isSelected) {
-      onSelect()
-      return
+      setIsEditing(false)
     }
-  }
+  }, [isSelected])
 
-  // Also ensure the handleTextareaClick stops propagation
-  const handleTextareaClick = (e: React.MouseEvent) => {
-    // Always stop propagation
-    e.stopPropagation()
-
-    if (!isEditing && isSelected) {
-      setIsEditing(true)
-    } else if (!isSelected) {
-      onSelect()
+  // Handle clicks on the main note div
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Stop this click from bubbling up to the document listener
+    e.stopPropagation();
+    
+    // Select the note if not already selected
+    if (!isSelected) {
+      onSelect();
+      return;
     }
-  }
+  };
+
+  // Handle double click for editing
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    // Stop propagation
+    e.stopPropagation();
+
+    // Can only enter edit mode if selected
+    if (isSelected) {
+      setIsEditing(true);
+      // Use timeout to ensure focus happens after state update
+      setTimeout(() => { 
+        textareaRef.current?.focus(); 
+      }, 0); 
+    }
+  };
 
   // Make sure the drag handler also stops propagation
   const handleStartDrag = (e: React.MouseEvent) => {
@@ -134,9 +143,8 @@ export function StickyNote({
       }
     }
 
-    if (isEditing) {
-      document.addEventListener("mousedown", handleClickOutside)
-    }
+    // Add event listener to handle clicks outside the note
+    document.addEventListener("mousedown", handleClickOutside)
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
@@ -163,6 +171,7 @@ export function StickyNote({
       }}
       onMouseDown={handleMouseDown}
       onMouseDownCapture={handleStartDrag}
+      onDoubleClick={handleDoubleClick}
     >
       <div
         className={cn(
@@ -228,14 +237,21 @@ export function StickyNote({
           }}
         ></div>
 
-        {/* Subtle noise texture overlay */}
-        <div
-          className="absolute inset-0 opacity-5 mix-blend-overlay"
-          style={{
-            backgroundImage:
-              "url('data:image/png;base64,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')",
-          }}
-        ></div>
+        {/* Delete button - only show when selected */}
+        {isSelected && (
+          <button
+            className="absolute top-2 right-2 p-1 rounded-full bg-black/50 hover:bg-black/70 transition-colors z-20"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete?.();
+            }}
+            style={{
+              cursor: 'pointer',
+            }}
+          >
+            <Trash2 className="w-4 h-4 text-gray-300" />
+          </button>
+        )}
 
         {/* Textarea for content */}
         <textarea
@@ -244,7 +260,7 @@ export function StickyNote({
           value={content}
           onChange={(e) => onContentChange(e.target.value)}
           placeholder="Type your note here..."
-          onClick={handleTextareaClick}
+          onClick={handleMouseDown}
           readOnly={!isEditing}
           style={{
             background: "transparent",
@@ -253,5 +269,8 @@ export function StickyNote({
         />
       </div>
     </div>
-  )
-}
+  );
+};
+
+// Export the memoized version
+export const StickyNote = memo(StickyNoteComponent);

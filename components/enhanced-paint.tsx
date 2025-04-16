@@ -60,6 +60,7 @@ export function EnhancedPaint({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [cursorDataUrl, setCursorDataUrl] = useState<string>("")
   const lastCursorProps = useRef({ color, brushSize, zoom })
+  const [pointerEventsStyle, setPointerEventsStyle] = useState<"none" | "auto">("none")
 
   // Update brushSize when externalBrushSize changes
   useEffect(() => {
@@ -131,46 +132,55 @@ export function EnhancedPaint({
         return;
       }
 
-      // Create cursor canvas
-      const cursorSize = Math.max(brushSize * zoom, 10);
-      const canvas = document.createElement("canvas");
-      const padding = 4; // Add padding for the outer stroke
-      canvas.width = cursorSize + padding * 2;
-      canvas.height = cursorSize + padding * 2;
+      try {
+        // Create cursor canvas
+        const cursorSize = Math.max(brushSize * zoom, 10);
+        const canvas = document.createElement("canvas");
+        const padding = 4; // Add padding for the outer stroke
+        canvas.width = cursorSize + padding * 2;
+        canvas.height = cursorSize + padding * 2;
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const radius = cursorSize / 2;
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = cursorSize / 2;
 
-      // Draw outer circle (white)
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-      ctx.strokeStyle = "white";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
+        // Draw outer circle (white)
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = "white";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
 
-      // Draw inner circle (color)
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.stroke();
+        // Draw inner circle (color)
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.stroke();
 
-      // Convert to data URL
-      const dataUrl = canvas.toDataURL();
+        // Convert to data URL with explicit PNG format
+        const dataUrl = canvas.toDataURL('image/png');
 
-      // Apply cursor with important flag and center it
-      containerRef.current?.style.setProperty(
-        "cursor",
-        `url(${dataUrl}) ${centerX} ${centerY}, crosshair`,
-        "important"
-      );
+        // Apply cursor with important flag and center it
+        if (containerRef.current) {
+          containerRef.current.style.setProperty(
+            "cursor",
+            `url("${dataUrl}") ${centerX} ${centerY}, crosshair`,
+            "important"
+          );
+        }
+      } catch (error) {
+        // Fallback to crosshair if there's an error
+        if (containerRef.current) {
+          containerRef.current.style.setProperty("cursor", "crosshair", "important");
+        }
+      }
     };
 
     // Update immediately and set up an interval to ensure cursor persists
@@ -494,13 +504,18 @@ export function EnhancedPaint({
     }
   }
 
+  // Handle pointer events style after initial render
+  useEffect(() => {
+    setPointerEventsStyle(stickyToolActive ? "none" : isActive ? "auto" : "none")
+  }, [stickyToolActive, isActive])
+
   return (
     <>
       <div
         ref={containerRef}
         className="absolute inset-0 z-10"
         style={{
-          pointerEvents: stickyToolActive ? "none" : isActive || alwaysSelectable ? "auto" : "none",
+          pointerEvents: pointerEventsStyle,
         }}
       >
         <canvas
