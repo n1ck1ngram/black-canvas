@@ -2,14 +2,21 @@
 
 import type React from "react"
 
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, useCallback } from "react"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog"
+import debounce from "lodash/debounce"
+
+interface Point {
+  x: number
+  y: number
+  size: number
+}
 
 interface Stroke {
   id: string
-  points: { x: number; y: number; size: number }[]
+  points: Point[]
   color: string
 }
 
@@ -44,6 +51,7 @@ export function EnhancedPaint({
 }: EnhancedPaintProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const [brushSize, setBrushSize] = useState(externalBrushSize || 20)
   const [strokes, setStrokes] = useState<Stroke[]>([])
@@ -51,6 +59,7 @@ export function EnhancedPaint({
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(externalSelectedStrokeId || null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [cursorDataUrl, setCursorDataUrl] = useState<string>("")
+  const lastCursorProps = useRef({ color, brushSize, zoom })
 
   // Update brushSize when externalBrushSize changes
   useEffect(() => {
@@ -105,54 +114,78 @@ export function EnhancedPaint({
     setCanvasSize()
   }, [])
 
-  // Generate cursor image based on brush size and color
+  // Create a reusable cursor canvas
   useEffect(() => {
-    if (!isActive) return
-
-    // Create a canvas to generate the cursor image
-    const cursorCanvas = document.createElement("canvas")
-    // Make the cursor size directly proportional to the brush size
-    const cursorSize = Math.max(brushSize * zoom, 10) // Ensure minimum size for visibility
-
-    // Make canvas large enough to accommodate the cursor
-    cursorCanvas.width = cursorSize * 2 + 10
-    cursorCanvas.height = cursorSize * 2 + 10
-
-    const ctx = cursorCanvas.getContext("2d")
-    if (!ctx) return
-
-    // Clear canvas
-    ctx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height)
-
-    const centerX = cursorCanvas.width / 2
-    const centerY = cursorCanvas.height / 2
-    const radius = cursorSize / 2 // Half the brush size for the cursor radius
-
-    // Draw outer white circle for visibility
-    ctx.beginPath()
-    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2)
-    ctx.strokeStyle = "white"
-    ctx.lineWidth = 2
-    ctx.stroke()
-
-    // Draw inner colored circle
-    ctx.beginPath()
-    ctx.arc(centerX, centerY, radius - 3, 0, Math.PI * 2)
-    ctx.strokeStyle = color
-    ctx.lineWidth = 2
-    ctx.stroke()
-
-    // Convert to data URL
-    const dataUrl = cursorCanvas.toDataURL()
-    setCursorDataUrl(dataUrl)
-
-    // Apply cursor to container
-    if (containerRef.current) {
-      containerRef.current.style.cursor = `url(${dataUrl}) ${centerX} ${centerY}, none`
+    if (!cursorCanvasRef.current) {
+      cursorCanvasRef.current = document.createElement("canvas")
     }
-  }, [isActive, brushSize, color, zoom])
+  }, [])
 
-  // Redraw all strokes when they change or when zoom/pan changes
+  // Update cursor when relevant props change
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const updateCursorStyle = () => {
+      if (!isActive) {
+        containerRef.current?.style.setProperty("cursor", "default", "important");
+        return;
+      }
+
+      // Create cursor canvas
+      const cursorSize = Math.max(brushSize * zoom, 10);
+      const canvas = document.createElement("canvas");
+      const padding = 4; // Add padding for the outer stroke
+      canvas.width = cursorSize + padding * 2;
+      canvas.height = cursorSize + padding * 2;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Clear canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = cursorSize / 2;
+
+      // Draw outer circle (white)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Draw inner circle (color)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Convert to data URL
+      const dataUrl = canvas.toDataURL();
+
+      // Apply cursor with important flag and center it
+      containerRef.current?.style.setProperty(
+        "cursor",
+        `url(${dataUrl}) ${centerX} ${centerY}, crosshair`,
+        "important"
+      );
+    };
+
+    // Update immediately and set up an interval to ensure cursor persists
+    updateCursorStyle();
+    const intervalId = setInterval(updateCursorStyle, 100);
+
+    return () => {
+      clearInterval(intervalId);
+      if (containerRef.current) {
+        containerRef.current.style.setProperty("cursor", "default", "important");
+      }
+    };
+  }, [isActive, color, brushSize, zoom]);
+
+  // Redraw all strokes
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -164,15 +197,15 @@ export function EnhancedPaint({
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
     // Draw all strokes
-    strokes.forEach((stroke) => {
-      stroke.points.forEach((point) => {
+    strokes.forEach((stroke: Stroke) => {
+      stroke.points.forEach((point: Point) => {
         drawSoftCircle(ctx, point.x, point.y, point.size, stroke.color)
       })
     })
 
     // Draw selection outline if a stroke is selected
     if (selectedStrokeId) {
-      const selectedStroke = strokes.find((s) => s.id === selectedStrokeId)
+      const selectedStroke = strokes.find((s: Stroke) => s.id === selectedStrokeId)
       if (selectedStroke) {
         drawSelectionOutline(ctx, selectedStroke)
       }
@@ -419,10 +452,6 @@ export function EnhancedPaint({
 
   // Delete a specific stroke by ID
   const deleteStroke = (id: string) => {
-    // Log for debugging
-    console.log("Deleting stroke:", id)
-
-    // Update strokes state
     setStrokes((prevStrokes) => {
       const newStrokes = prevStrokes.filter((stroke) => stroke.id !== id)
       console.log("Strokes before:", prevStrokes.length, "Strokes after:", newStrokes.length)
@@ -458,7 +487,7 @@ export function EnhancedPaint({
 
   // Clear canvas
   const clearCanvas = () => {
-    setStrokes([])
+    setStrokes((prevStrokes: Stroke[]) => [])
     setSelectedStrokeId(null)
     if (onSelectStroke) {
       onSelectStroke(null)
@@ -472,7 +501,6 @@ export function EnhancedPaint({
         className="absolute inset-0 z-10"
         style={{
           pointerEvents: stickyToolActive ? "none" : isActive || alwaysSelectable ? "auto" : "none",
-          cursor: isActive ? "none" : "default", // Just use "none" here, we'll set the cursor in useEffect
         }}
       >
         <canvas
@@ -484,21 +512,6 @@ export function EnhancedPaint({
           onMouseLeave={handleMouseLeave}
         />
       </div>
-
-      {/* Delete button for selected stroke */}
-      {selectedStrokeId && (
-        <div className="fixed top-20 right-4 z-[9999]">
-          <Button
-            variant="destructive"
-            size="sm"
-            className="flex items-center gap-2 shadow-lg"
-            onClick={handleDeleteClick}
-          >
-            <Trash2 size={16} />
-            Delete Selection
-          </Button>
-        </div>
-      )}
 
       <DeleteConfirmationDialog
         isOpen={isDeleteDialogOpen}

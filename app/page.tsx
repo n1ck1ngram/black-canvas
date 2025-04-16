@@ -555,12 +555,10 @@ export default function WhiteboardApp() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only trigger delete if we're not editing text in a textarea or input
-      const isEditingText =
-        document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT"
-
-      if ((e.key === "Delete" || e.key === "Backspace") && !activeTool && !isEditingText) {
+      const isEditingText = document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT"
+      
+      if ((e.key === "Delete" || e.key === "Backspace") && !isEditingText) {
         if (selectedNoteId) {
-          // Check if we should show the dialog
           const dontShow = localStorage.getItem("dontShowDeleteConfirmation") === "true"
           if (dontShow) {
             deleteSelectedNote()
@@ -579,7 +577,7 @@ export default function WhiteboardApp() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [selectedNoteId, selectedTextId, selectedStrokeId, activeTool, deleteSelectedStroke])
+  }, [selectedNoteId, selectedTextId, selectedStrokeId, deleteSelectedStroke])
 
   // Add keyboard event listeners for space bar panning
   useEffect(() => {
@@ -733,19 +731,6 @@ export default function WhiteboardApp() {
           brushSize={brushSize}
           onBrushSizeChange={handleBrushSizeChange}
         />
-        {selectedStrokeId && (
-          <div className="fixed bottom-20 right-4 z-[9999]">
-            <Button
-              variant="destructive"
-              size="sm"
-              className="flex items-center gap-2 shadow-lg"
-              onClick={deleteSelectedStroke}
-            >
-              <Trash2 size={16} />
-              Delete Stroke
-            </Button>
-          </div>
-        )}
       </main>
     </div>
   )
