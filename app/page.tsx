@@ -8,13 +8,23 @@ import { BottomToolbar } from "@/components/bottom-toolbar"
 import { StickyNote } from "@/components/sticky-note"
 import { EnhancedPaint } from "@/components/enhanced-paint"
 import { TypewriterTool } from "@/components/typewriter-tool"
+import { SimpleText } from "@/components/simple-text"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { StickyNotePreview } from "@/components/sticky-note-preview"
+import { SimpleTextPreview } from "@/components/simple-text-preview"
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog"
 
 // Define the sticky note type
 interface Note {
+  id: string
+  content: string
+  position: { x: number; y: number }
+  color: string
+}
+
+// Define the simple text type
+interface SimpleTextType {
   id: string
   content: string
   position: { x: number; y: number }
@@ -36,6 +46,9 @@ type HistoryAction = {
     | "add_note"
     | "update_note"
     | "delete_note"
+    | "add_simple_text"
+    | "update_simple_text"
+    | "delete_simple_text"
     | "add_text"
     | "update_text"
     | "delete_text"
@@ -58,6 +71,10 @@ export default function WhiteboardApp() {
   const [notes, setNotes] = useState<Note[]>([])
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+
+  // State for simple texts
+  const [simpleTexts, setSimpleTexts] = useState<SimpleTextType[]>([])
+  const [selectedSimpleTextId, setSelectedSimpleTextId] = useState<string | null>(null)
 
   // State for typewriter texts
   const [texts, setTexts] = useState<TypewriterText[]>([])
@@ -95,11 +112,31 @@ export default function WhiteboardApp() {
   // Add a ref to store the delete stroke function
   const deleteStrokeRef = useRef<((id: string) => void) | null>(null)
 
-  // Define handleStrokeSelect early to resolve dependency issues
-  const handleStrokeSelect = useCallback((id: string | null) => {
-    console.log("[handleStrokeSelect] Setting selected stroke ID:", id);
-    setSelectedStrokeId(id)
-  }, [setSelectedStrokeId])
+  // Handles selecting/deselecting strokes
+  const handleStrokeSelect = useCallback(
+    (id: string | null) => {
+      console.log(`[handleStrokeSelect] Setting selected stroke ID: ${id}`)
+      setSelectedStrokeId(id)
+      if (id) {
+        setSelectedNoteId(null)
+        setSelectedTextId(null)
+        setSelectedSimpleTextId(null)
+      }
+    },
+    [setSelectedStrokeId, setSelectedNoteId, setSelectedTextId, setSelectedSimpleTextId],
+  )
+
+  // Callback to deselect all element types
+  const handleDeselectAll = useCallback(() => {
+    console.log("[handleDeselectAll] Deselecting all elements.");
+    if (selectedNoteId) setSelectedNoteId(null);
+    if (selectedTextId) setSelectedTextId(null);
+    if (selectedSimpleTextId) setSelectedSimpleTextId(null);
+    if (selectedStrokeId) {
+      setSelectedStrokeId(null);
+      handleStrokeSelect(null); // Ensure EnhancedPaint knows
+    }
+  }, [selectedNoteId, selectedTextId, selectedSimpleTextId, selectedStrokeId]);
 
   // Initialize view to center of canvas
   useEffect(() => {
@@ -123,13 +160,23 @@ export default function WhiteboardApp() {
     (screenX: number, screenY: number) => {
       if (!containerRef.current) return { x: 0, y: 0 }
 
+      // If hand tool is active, prevent default cursor logic
+      if (activeTool === 'move') {
+        // The container itself should have grab/grabbing cursor
+      } else if (activeTool === 'spray') {
+        // Spray tool manages its own cursor via EnhancedPaint
+      } else {
+        // Default cursor for other states (e.g., pointer)
+        containerRef.current.style.cursor = "default";
+      }
+
       const rect = containerRef.current.getBoundingClientRect()
       const x = (screenX - rect.left - pan.x) / zoom
       const y = (screenY - rect.top - pan.y) / zoom
 
       return { x, y }
     },
-    [pan, zoom],
+    [pan, zoom, activeTool],
   )
 
   // Convert canvas coordinates to screen coordinates
@@ -197,11 +244,20 @@ export default function WhiteboardApp() {
     }
   }, [handleWheel])
 
-  // Start panning with space + drag or middle mouse button
+  // Start panning with space + drag or middle mouse button / Also handle deselection on container click
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Middle mouse button (button 1) or space key is pressed
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    // Pan if:
+    // 1. Middle mouse button (button 1) is pressed
+    // 2. Left mouse button (button 0) AND Alt key are pressed
+    // 3. Left mouse button (button 0) AND Hand tool is active
+    const isPanningTrigger = 
+      e.button === 1 || 
+      (e.button === 0 && e.altKey) || 
+      (e.button === 0 && activeTool === "move");
+
+    if (isPanningTrigger) {
       e.preventDefault()
+      e.stopPropagation(); // Stop propagation ONLY if panning starts
       setIsPanning(true)
       setPanStart({
         x: e.clientX - pan.x,
@@ -212,18 +268,28 @@ export default function WhiteboardApp() {
       if (containerRef.current) {
         containerRef.current.style.cursor = "grabbing"
       }
+
+      // If panning was triggered, DO NOT proceed to deselection logic
+      return;
     }
+
+    // If not panning, do nothing here. Let event propagate.
   }
+
+  // Helper to set cursor, considering spray paint's custom cursor
+  const setContainerCursor = (cursorStyle: string) => {
+    if (containerRef.current && activeTool !== 'spray') { // Don't interfere if spray is active
+      containerRef.current.style.cursor = cursorStyle;
+    }
+  };
 
   // Stop panning
   const handleMouseUp = () => {
     if (isPanning) {
       setIsPanning(false)
 
-      // Reset cursor
-      if (containerRef.current) {
-        containerRef.current.style.cursor = "default"
-      }
+      // Reset cursor based on whether move tool is still active
+      setContainerCursor(activeTool === 'move' ? 'grab' : 'default');
     }
   }
 
@@ -272,95 +338,165 @@ export default function WhiteboardApp() {
     }
   }, [history, historyIndex])
 
-  // Handles actions triggered by clicking the canvas background (now called from main onClick)
-  const handleCanvasClick = useCallback(
-    (e: React.MouseEvent) => {
-      // 1. Deselect everything first when clicking background
-      console.log("[handleCanvasClick] Deselecting all elements.");
-      if (selectedNoteId) setSelectedNoteId(null);
-      if (selectedTextId) setSelectedTextId(null);
-      if (selectedStrokeId) {
-        setSelectedStrokeId(null);
-        handleStrokeSelect(null); // Ensure EnhancedPaint knows stroke is deselected
+  // Effect to handle global clicks for deselection and placement
+  useEffect(() => {
+    const handleGlobalClick = (event: MouseEvent) => {
+      const target = event.target as Element;
+      
+      // Skip if clicking on any interactive element (sticky notes, text, etc.)
+      if (target.closest('[data-interactive=true]')) {
+        return;
       }
+      
+      // Only handle clicks directly on the grid background
+      if (gridRef.current && target === gridRef.current) {
+        // If we're in pointer mode, allow deselection
+        if (activeTool === "pointer") {
+          handleDeselectAll();
+        }
+        
+        // Handle panning for other cases
+        if (event.button === 0 && activeTool !== "move" && !event.altKey) {
+          event.preventDefault();
+          setIsPanning(true);
+          setPanStart({
+            x: event.clientX - pan.x,
+            y: event.clientY - pan.y,
+          });
+          if (containerRef.current) {
+            containerRef.current.style.cursor = "grabbing";
+          }
+        }
+      }
+    };
+    
+    document.addEventListener('mousedown', handleGlobalClick);
+    return () => { document.removeEventListener('mousedown', handleGlobalClick); };
+  }, [activeTool, pan.x, pan.y, handleDeselectAll]);
 
-      // 2. Place new item if a tool is active
-      // Only place if the corresponding tool is active
-      if (activeTool === "sticky") {
-        console.log("[handleCanvasClick] Sticky tool active, placing note.");
-        const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-        const newNote: Note = {
-          id: `note-${Date.now()}`,
-          content: "",
-          position: {
-            x: canvasCoords.x - 110, 
-            y: canvasCoords.y - 110,
-          },
-          color: "#121212",
-        };
-        addToHistory({
-          type: "add_note",
-          data: newNote,
-          undo: () => setNotes((prev) => prev.filter((note) => note.id !== newNote.id)),
-          redo: () => setNotes((prev) => [...prev, newNote]),
-        });
-        setNotes((prevNotes) => [...prevNotes, newNote]);
-        setSelectedNoteId(newNote.id); // Select the new note
-        setActiveTool(null); // Deactivate tool
-      } else if (activeTool === "typewriter" || activeTool === "text") {
-        console.log("[handleCanvasClick] Typewriter tool active, placing text.");
-        const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-        const newText: TypewriterText = {
-          id: `text-${Date.now()}`,
-          content: "",
-          position: canvasCoords,
-          fontSize: 16,
-          color: "#ffffff",
-        };
-        addToHistory({
-          type: "add_text",
-          data: newText,
-          undo: () => setTexts((prev) => prev.filter((text) => text.id !== newText.id)),
-          redo: () => setTexts((prev) => [...prev, newText]),
-        });
-        setTexts((prevTexts) => [...prevTexts, newText]);
-        setSelectedTextId(newText.id); // Select the new text
-        setActiveTool(null); // Deactivate tool
+  // Handle canvas click
+  const handleCanvasClick = useCallback(
+    (e: React.MouseEvent | MouseEvent) => {
+      console.log(`[handleCanvasClick] Fired. Active tool: ${activeTool}`);
+      
+      // Skip if clicking on a sticky note or its children
+      const target = e.target as Element;
+      const closestNote = target.closest('.sticky-note');
+      if (closestNote) return;
+
+      // Handle placement tools
+      if (activeTool === "sticky" || activeTool === "text" || activeTool === "typewriter") {
+        const event = e as React.MouseEvent;
+        const canvasCoords = screenToCanvas(event.clientX, event.clientY);
+        
+        if (activeTool === "sticky") {
+          console.log("[handleCanvasClick] Placing sticky note");
+          const newNote: Note = {
+            id: `note-${Date.now()}`,
+            content: "",
+            position: {
+              x: canvasCoords.x - 110,
+              y: canvasCoords.y - 110,
+            },
+            color: "#121212",
+          };
+          addToHistory({
+            type: "add_note",
+            data: newNote,
+            undo: () => setNotes((prev) => prev.filter((note) => note.id !== newNote.id)),
+            redo: () => setNotes((prev) => [...prev, newNote]),
+          });
+          setNotes((prevNotes) => [...prevNotes, newNote]);
+          setSelectedNoteId(newNote.id);
+          setActiveTool("pointer");
+        } else if (activeTool === "text") {
+          console.log("[handleCanvasClick] Text tool active, attempting to place simple text...");
+          const newSimpleText: SimpleTextType = {
+            id: `simple-text-${Date.now()}`,
+            content: "",
+            position: canvasCoords,
+            color: "#FFFFFF", // Default white
+          };
+          addToHistory({
+            type: "add_simple_text",
+            data: newSimpleText,
+            undo: () => setSimpleTexts((prev) => prev.filter((text) => text.id !== newSimpleText.id)),
+            redo: () => setSimpleTexts((prev) => [...prev, newSimpleText]),
+          });
+          setSimpleTexts((prev) => [...prev, newSimpleText]);
+          setSelectedSimpleTextId(newSimpleText.id); // Select the new text
+          setSelectedTextId(null); // Deselect typewriter text
+          setSelectedNoteId(null); // Deselect note
+          setSelectedStrokeId(null); // Deselect stroke
+          setActiveTool("pointer"); // Default back to pointer tool
+          setContainerCursor('default');
+        } else if (activeTool === "typewriter") {
+          console.log("[handleCanvasClick] Typewriter tool active, attempting to place typewriter text...");
+          const newText: TypewriterText = {
+            id: `text-${Date.now()}`,
+            content: "",
+            position: canvasCoords,
+            fontSize: 16,
+            color: "#ffffff",
+          };
+          addToHistory({
+            type: "add_text",
+            data: newText,
+            undo: () => setTexts((prev) => prev.filter((text) => text.id !== newText.id)),
+            redo: () => setTexts((prev) => [...prev, newText]),
+          });
+          setTexts((prevTexts) => [...prevTexts, newText]);
+          setSelectedTextId(newText.id); // Select the new typewriter text
+          setSelectedSimpleTextId(null); // Deselect simple text
+          setSelectedNoteId(null); // Deselect note
+          setSelectedStrokeId(null); // Deselect stroke
+          setActiveTool("pointer"); // Default back to pointer tool
+          setContainerCursor('default');
+        }
       }
     },
-    [activeTool, addToHistory, screenToCanvas, setNotes, setSelectedNoteId, setActiveTool, setTexts, setSelectedTextId, selectedNoteId, selectedTextId, selectedStrokeId, handleStrokeSelect]
+    [activeTool, addToHistory, screenToCanvas]
   );
 
-  // Handle tool selection from the toolbar
   const handleToolSelect = useCallback(
     (tool: string | null) => {
-      // If selecting the same tool, toggle it off
-      if (tool === activeTool) {
-        setActiveTool(null)
-        return
+      console.log(`[handleToolSelect] Tool selected: ${tool}, current tool: ${activeTool}`);
+      
+      // If clicking the same tool or switching to pointer, preserve selection
+      if (tool === activeTool || tool === "pointer") {
+        console.log("[handleToolSelect] Switching to pointer mode, preserving selection");
+        setActiveTool("pointer");
+        if (containerRef.current) {
+          containerRef.current.style.cursor = 'default';
+        }
+        return;
       }
 
-      if (tool === "spray") {
-        // Activate spray tool and keep the current color
-        setActiveTool("spray")
-      } else if (tool === "pointer") {
-        // When pointer tool is chosen, deactivate any active tool
-        setActiveTool(null)
-      } else if (tool === "text" || tool === "typewriter") {
-        // Both text and typewriter tools should activate the typewriter functionality
-        setActiveTool("typewriter")
-      } else {
-        setActiveTool(tool)
+      // Only deselect when activating specific tools
+      if (tool === "spray" || tool === "move") {
+        console.log(`[handleToolSelect] Activating ${tool}, deselecting all`);
+        handleDeselectAll();
       }
 
-      // Deselect the current note when switching to a tool
-      if (tool) {
-        setSelectedNoteId(null)
-        setSelectedTextId(null)
+      // Set the tool
+      setActiveTool(tool);
+
+      // Update cursor
+      if (containerRef.current) {
+        switch (tool) {
+          case 'move':
+            containerRef.current.style.cursor = 'grab';
+            break;
+          case 'spray':
+            containerRef.current.style.cursor = 'crosshair';
+            break;
+          default:
+            containerRef.current.style.cursor = 'default';
+        }
       }
     },
-    [activeTool],
-  )
+    [activeTool, handleDeselectAll]
+  );
 
   // Handle color selection
   const handleColorSelect = (color: string) => {
@@ -535,7 +671,9 @@ export default function WhiteboardApp() {
       const isEditingText = document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT"
       
       if ((e.key === "Delete" || e.key === "Backspace") && !isEditingText) {
-        if (selectedNoteId) {
+        if (selectedSimpleTextId) {
+          deleteSelectedSimpleText();
+        } else if (selectedNoteId) {
           const dontShow = localStorage.getItem("dontShowDeleteConfirmation") === "true"
           if (dontShow) {
             deleteSelectedNote()
@@ -554,7 +692,7 @@ export default function WhiteboardApp() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [selectedNoteId, selectedTextId, selectedStrokeId, deleteSelectedStroke])
+  }, [selectedSimpleTextId, selectedNoteId, selectedTextId, selectedStrokeId, deleteSelectedStroke])
 
   // Add keyboard event listeners for space bar panning
   useEffect(() => {
@@ -569,7 +707,8 @@ export default function WhiteboardApp() {
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Alt") {
         if (containerRef.current && !isPanning) {
-          containerRef.current.style.cursor = "default"
+          // Only reset if move tool isn't active
+          setContainerCursor(activeTool === 'move' ? 'grab' : 'default');
         }
       }
     }
@@ -596,30 +735,57 @@ export default function WhiteboardApp() {
     setBrushSize(size)
   }, [])
 
-  // Effect to handle global clicks for deselection and placement
-  useEffect(() => {
-    const handleGlobalClick = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (gridRef.current && target === gridRef.current) {
-        console.log("[Global Mousedown] -> Grid Background Clicked, starting pan.");
-        event.preventDefault(); // Prevent potential text selection drag
-        setIsPanning(true);
-        setPanStart({
-          x: event.clientX - pan.x,
-          y: event.clientY - pan.y,
-        });
-        if (containerRef.current) {
-          containerRef.current.style.cursor = "grabbing";
-        }
-      } else {
-        // If the click is outside the grid (e.g., on toolbar, or potentially outside the main container)
-        // We might want to consider deselecting items here too, TBD if needed.
-        // For now, only clicks *directly* on the grid background handle deselection/placement via onClick.
-      }
-    };
-    document.addEventListener('mousedown', handleGlobalClick);
-    return () => { document.removeEventListener('mousedown', handleGlobalClick); };
-  }, [pan.x, pan.y, handleStrokeSelect]); // Dependencies updated
+  // Update simple text content
+  const handleSimpleTextContentChange = (id: string, content: string) => {
+    const textToUpdate = simpleTexts.find((text) => text.id === id);
+    if (!textToUpdate) return;
+    const previousContent = textToUpdate.content;
+    addToHistory({
+      type: "update_simple_text",
+      data: { id, content, previousContent },
+      undo: () => {
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content: previousContent } : text)))
+      },
+      redo: () => {
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content } : text)))
+      },
+    });
+    setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content } : text)));
+  };
+
+  // Update simple text position
+  const handleSimpleTextPositionChange = (id: string, position: { x: number; y: number }) => {
+    const textToUpdate = simpleTexts.find((text) => text.id === id);
+    if (!textToUpdate) return;
+    const previousPosition = textToUpdate.position;
+    addToHistory({
+      type: "update_simple_text",
+      data: { id, position, previousPosition },
+      undo: () => {
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, position: previousPosition } : text)))
+      },
+      redo: () => {
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, position } : text)))
+      },
+    });
+    setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, position } : text)));
+  };
+
+  // Delete selected simple text
+  const deleteSelectedSimpleText = () => {
+    if (selectedSimpleTextId) {
+      const textToDelete = simpleTexts.find((text) => text.id === selectedSimpleTextId);
+      if (!textToDelete) return;
+      addToHistory({
+        type: "delete_simple_text",
+        data: textToDelete,
+        undo: () => setSimpleTexts((prev) => [...prev, textToDelete]),
+        redo: () => setSimpleTexts((prev) => prev.filter((text) => text.id !== textToDelete.id)),
+      });
+      setSimpleTexts((prev) => prev.filter((text) => text.id !== selectedSimpleTextId));
+      setSelectedSimpleTextId(null);
+    }
+  };
 
   // Handle adding adjacent sticky notes
   const handleAddAdjacentNote = useCallback((noteId: string, direction: 'top' | 'right' | 'bottom' | 'left') => {
@@ -695,10 +861,15 @@ export default function WhiteboardApp() {
         {/* Sticky Note Preview - Moved outside the transformed container */}
         {activeTool === "sticky" && (
           <StickyNotePreview
-            position={{
-              x: mousePosition.x * zoom + pan.x,
-              y: mousePosition.y * zoom + pan.y
-            }}
+            position={canvasToScreen(mousePosition.x, mousePosition.y)}
+            zoom={zoom}
+          />
+        )}
+
+        {/* Simple Text Preview - Moved outside the transformed container */}
+        {activeTool === "text" && (
+          <SimpleTextPreview
+            position={canvasToScreen(mousePosition.x, mousePosition.y)}
             zoom={zoom}
           />
         )}
@@ -741,6 +912,8 @@ export default function WhiteboardApp() {
             alwaysSelectable={true}
             stickyToolActive={activeTool === "sticky"}
             deleteStrokeRef={deleteStrokeRef}
+            activeTool={activeTool}
+            onBackgroundClick={handleDeselectAll}
           />
 
           {/* Render all sticky notes */}
@@ -775,6 +948,34 @@ export default function WhiteboardApp() {
               onAddAdjacent={(direction) => handleAddAdjacentNote(note.id, direction)}
               zoom={zoom}
               screenToCanvas={screenToCanvas}
+              activeTool={activeTool}
+            />
+          ))}
+
+          {/* Render all simple texts */}
+          {simpleTexts.map((text) => (
+            <SimpleText
+              key={text.id}
+              id={text.id}
+              content={text.content}
+              position={text.position}
+              color={text.color}
+              isSelected={selectedSimpleTextId === text.id}
+              onSelect={() => {
+                setSelectedSimpleTextId(text.id);
+                // Deselect other types
+                if (selectedNoteId) setSelectedNoteId(null);
+                if (selectedTextId) setSelectedTextId(null);
+                if (selectedStrokeId) {
+                  setSelectedStrokeId(null);
+                  if (handleStrokeSelect) handleStrokeSelect(null);
+                }
+              }}
+              onContentChange={(content) => handleSimpleTextContentChange(text.id, content)}
+              onPositionChange={(position) => handleSimpleTextPositionChange(text.id, position)}
+              zoom={zoom}
+              screenToCanvas={screenToCanvas}
+              activeTool={activeTool}
             />
           ))}
 
@@ -793,6 +994,7 @@ export default function WhiteboardApp() {
               onPositionChange={(position) => handleTextPositionChange(text.id, position)}
               zoom={zoom}
               screenToCanvas={screenToCanvas}
+              activeTool={activeTool}
             />
           ))}
         </div>

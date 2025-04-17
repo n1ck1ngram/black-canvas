@@ -17,6 +17,8 @@ interface TypewriterToolProps {
   onPositionChange: (position: { x: number; y: number }) => void
   zoom?: number
   screenToCanvas?: (screenX: number, screenY: number) => { x: number; y: number }
+  activeTool?: string | null
+  clickHandledRef?: React.RefObject<boolean>
 }
 
 export function TypewriterTool({
@@ -31,6 +33,8 @@ export function TypewriterTool({
   onPositionChange,
   zoom = 1,
   screenToCanvas = (x, y) => ({ x, y }),
+  activeTool = null,
+  clickHandledRef,
 }: TypewriterToolProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
@@ -142,7 +146,13 @@ export function TypewriterTool({
   return (
     <div
       ref={textRef}
-      className={cn("absolute", isDragging ? "cursor-grabbing" : isEditing ? "cursor-text" : "cursor-grab")}
+      className={cn(
+        "absolute",
+        // Disable pointer events entirely if move tool is active
+        activeTool === 'move' ? "pointer-events-none" :
+          // Otherwise, apply appropriate cursor based on state
+          (isDragging ? "cursor-grabbing" : isEditing ? "cursor-text" : "cursor-grab"),
+      )}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
@@ -152,7 +162,15 @@ export function TypewriterTool({
         transition: isDragging ? "none" : "transform 0.3s, box-shadow 0.3s",
       }}
       onClick={handleClick}
-      onMouseDownCapture={handleStartDrag}
+      onMouseDown={(e) => {
+        if (e.button !== 0) return;
+
+        if (activeTool === "move") {
+          e.stopPropagation();
+          return;
+        }
+        handleStartDrag(e);
+      }}
     >
       {isEditing ? (
         <textarea

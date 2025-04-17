@@ -144,7 +144,7 @@ export function BottomToolbar({
         <div className="flex items-center justify-center">
           {/* Pointer Tool - Now separate */}
           <ToolCell
-            isActive={activeTool === "pointer"}
+            isActive={activeTool === "pointer" || activeTool === null}
             onClick={() => handleToolClick("pointer")}
             onMouseEnter={() => setHoveredTool("pointer")}
             onMouseLeave={() => setHoveredTool(null)}
@@ -158,7 +158,7 @@ export function BottomToolbar({
                 height={48}
                 className={cn(
                   "object-contain transition-all",
-                  activeTool === "pointer" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
+                  (activeTool === "pointer" || activeTool === null) ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
                 )}
                 priority
               />
