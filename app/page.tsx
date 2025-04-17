@@ -95,6 +95,12 @@ export default function WhiteboardApp() {
   // Add a ref to store the delete stroke function
   const deleteStrokeRef = useRef<((id: string) => void) | null>(null)
 
+  // Define handleStrokeSelect early to resolve dependency issues
+  const handleStrokeSelect = useCallback((id: string | null) => {
+    console.log("[handleStrokeSelect] Setting selected stroke ID:", id);
+    setSelectedStrokeId(id)
+  }, [setSelectedStrokeId])
+
   // Initialize view to center of canvas
   useEffect(() => {
     if (containerRef.current) {
@@ -266,23 +272,19 @@ export default function WhiteboardApp() {
     }
   }, [history, historyIndex])
 
-  // Add a new function to handle stroke clicks separately
-  const handleStrokeClick = useCallback(
-    (id: string | null) => {
-      // Only handle stroke selection if we're not in sticky note placement mode
-      if (activeTool !== "sticky" && activeTool !== "typewriter") {
-        setSelectedStrokeId(id)
-      }
-    },
-    [activeTool],
-  )
-
   // Handles actions triggered by clicking the canvas background (now called from main onClick)
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent) => {
-      // Don't do anything if panning
-      if (isPanning) return;
+      // 1. Deselect everything first when clicking background
+      console.log("[handleCanvasClick] Deselecting all elements.");
+      if (selectedNoteId) setSelectedNoteId(null);
+      if (selectedTextId) setSelectedTextId(null);
+      if (selectedStrokeId) {
+        setSelectedStrokeId(null);
+        handleStrokeSelect(null); // Ensure EnhancedPaint knows stroke is deselected
+      }
 
+      // 2. Place new item if a tool is active
       // Only place if the corresponding tool is active
       if (activeTool === "sticky") {
         console.log("[handleCanvasClick] Sticky tool active, placing note.");
@@ -326,7 +328,7 @@ export default function WhiteboardApp() {
         setActiveTool(null); // Deactivate tool
       }
     },
-    [activeTool, addToHistory, isPanning, screenToCanvas, setNotes, setSelectedNoteId, setActiveTool, setTexts, setSelectedTextId]
+    [activeTool, addToHistory, screenToCanvas, setNotes, setSelectedNoteId, setActiveTool, setTexts, setSelectedTextId, selectedNoteId, selectedTextId, selectedStrokeId, handleStrokeSelect]
   );
 
   // Handle tool selection from the toolbar
@@ -594,36 +596,79 @@ export default function WhiteboardApp() {
     setBrushSize(size)
   }, [])
 
-  // Handle stroke selection
-  const handleStrokeSelect = useCallback((id: string | null) => {
-    setSelectedStrokeId(id)
-  }, [])
-
   // Effect to handle global clicks for deselection and placement
   useEffect(() => {
     const handleGlobalClick = (event: MouseEvent) => {
       const target = event.target as Node;
       if (gridRef.current && target === gridRef.current) {
-        console.log("[Global Click] -> Grid Background Clicked");
-        // 1. Deselect everything
-        console.log("[Global Click] Deselecting all elements.");
-        if (selectedNoteId) setSelectedNoteId(null);
-        if (selectedTextId) setSelectedTextId(null);
-        if (selectedStrokeId) {
-          setSelectedStrokeId(null);
-          handleStrokeSelect(null);
+        console.log("[Global Mousedown] -> Grid Background Clicked, starting pan.");
+        event.preventDefault(); // Prevent potential text selection drag
+        setIsPanning(true);
+        setPanStart({
+          x: event.clientX - pan.x,
+          y: event.clientY - pan.y,
+        });
+        if (containerRef.current) {
+          containerRef.current.style.cursor = "grabbing";
         }
-
-        // 2. Handle placement if a tool is active
-        if (activeTool === 'sticky' || activeTool === 'typewriter' || activeTool === 'text') {
-            console.log(`[Global Click] Tool ${activeTool} active, calling handleCanvasClick.`);
-            handleCanvasClick(event as any);
-        }
+      } else {
+        // If the click is outside the grid (e.g., on toolbar, or potentially outside the main container)
+        // We might want to consider deselecting items here too, TBD if needed.
+        // For now, only clicks *directly* on the grid background handle deselection/placement via onClick.
       }
     };
     document.addEventListener('mousedown', handleGlobalClick);
     return () => { document.removeEventListener('mousedown', handleGlobalClick); };
-  }, [activeTool, selectedNoteId, selectedTextId, selectedStrokeId, handleStrokeSelect, handleCanvasClick]);
+  }, [pan.x, pan.y, handleStrokeSelect]); // Dependencies updated
+
+  // Handle adding adjacent sticky notes
+  const handleAddAdjacentNote = useCallback((noteId: string, direction: 'top' | 'right' | 'bottom' | 'left') => {
+    console.log(`Adding adjacent note in direction: ${direction} for note: ${noteId}`);
+    const originalNote = notes.find(note => note.id === noteId);
+    if (!originalNote) {
+      console.error('Original note not found:', noteId);
+      return;
+    }
+
+    console.log('Original note position:', originalNote.position);
+
+    const offset = 260; // Note size (220px) + increased gap (40px)
+    let newPosition = { ...originalNote.position };
+    
+    switch (direction) {
+      case 'top':
+        newPosition.y -= offset;
+        break;
+      case 'right':
+        newPosition.x += offset;
+        break;
+      case 'bottom':
+        newPosition.y += offset;
+        break;
+      case 'left':
+        newPosition.x -= offset;
+        break;
+    }
+
+    console.log('New note position:', newPosition);
+
+    const newNote: Note = {
+      id: `note-${Date.now()}`,
+      content: "",
+      position: newPosition,
+      color: "#121212",
+    };
+
+    addToHistory({
+      type: "add_note",
+      data: newNote,
+      undo: () => setNotes(prev => prev.filter(note => note.id !== newNote.id)),
+      redo: () => setNotes(prev => [...prev, newNote]),
+    });
+
+    setNotes(prev => [...prev, newNote]);
+    setSelectedNoteId(newNote.id);
+  }, [notes, addToHistory]);
 
   return (
     <div className="flex flex-col h-screen bg-black text-gray-200">
@@ -675,10 +720,11 @@ export default function WhiteboardApp() {
             className="absolute inset-0 w-full h-full"
             style={{
               backgroundColor: "#000000",
-              backgroundImage: `radial-gradient(#222222 1px, transparent 1px)`,
-              backgroundSize: `20px 20px`,
+              backgroundImage: `radial-gradient(#222222 1.5px, transparent 1.5px)`,
+              backgroundSize: `40px 40px`,
               zIndex: 1,
             }}
+            onClick={handleCanvasClick}
           ></div>
 
           {/* Enhanced Paint Canvas */}
@@ -690,7 +736,7 @@ export default function WhiteboardApp() {
             screenToCanvas={screenToCanvas}
             brushSize={brushSize}
             onClearRef={clearCanvasRef}
-            onSelectStroke={handleStrokeClick}
+            onSelectStroke={handleStrokeSelect}
             selectedStrokeId={selectedStrokeId}
             alwaysSelectable={true}
             stickyToolActive={activeTool === "sticky"}
@@ -712,13 +758,13 @@ export default function WhiteboardApp() {
                 if (selectedTextId) setSelectedTextId(null);
                 if (selectedStrokeId) {
                    setSelectedStrokeId(null);
-                   if (handleStrokeClick) handleStrokeClick(null);
+                   if (handleStrokeSelect) handleStrokeSelect(null);
                 }
               }}
               onContentChange={(content) => handleNoteContentChange(note.id, content)}
               onPositionChange={(position) => handleNotePositionChange(note.id, position)}
               onDelete={() => {
-                setSelectedNoteId(note.id); // Set the selected note before deleting
+                setSelectedNoteId(note.id);
                 const dontShow = localStorage.getItem("dontShowDeleteConfirmation") === "true"
                 if (dontShow) {
                   deleteSelectedNote()
@@ -726,6 +772,7 @@ export default function WhiteboardApp() {
                   setIsDeleteDialogOpen(true)
                 }
               }}
+              onAddAdjacent={(direction) => handleAddAdjacentNote(note.id, direction)}
               zoom={zoom}
               screenToCanvas={screenToCanvas}
             />

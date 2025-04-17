@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState, useEffect, useRef, memo } from "react"
 import { cn } from "@/lib/utils"
-import { Trash2 } from "lucide-react"
+import { Trash2, Plus } from "lucide-react"
 
 export interface StickyNoteProps {
   id: string
@@ -15,6 +15,7 @@ export interface StickyNoteProps {
   onContentChange: (content: string) => void
   onPositionChange: (position: { x: number; y: number }) => void
   onDelete?: () => void
+  onAddAdjacent?: (position: 'top' | 'right' | 'bottom' | 'left') => void
   zoom?: number
   screenToCanvas?: (screenX: number, screenY: number) => { x: number; y: number }
 }
@@ -30,17 +31,17 @@ const StickyNoteComponent = ({
   onContentChange,
   onPositionChange,
   onDelete,
+  onAddAdjacent,
   zoom = 1,
   screenToCanvas = (x, y) => ({ x, y }),
 }: StickyNoteProps) => {
-  // Log the received isSelected prop on each render - REMOVED for clarity
-  // console.log(`[StickyNote ${id}] Rendering - isSelected prop: ${isSelected}`);
-  
   const [isDragging, setIsDragging] = useState(false)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [isEditing, setIsEditing] = useState(false)
   const noteRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [hoveredDot, setHoveredDot] = useState<'top' | 'right' | 'bottom' | 'left' | null>(null)
+  const [previewPosition, setPreviewPosition] = useState<{ x: number; y: number } | null>(null)
 
   // Focus the textarea when editing mode is activated
   useEffect(() => {
@@ -152,7 +153,34 @@ const StickyNoteComponent = ({
   }, [isEditing])
 
   // Calculate a slight random rotation for a more natural look
-  const rotation = useRef(Math.random() * 2 - 1) // Between -1 and 1 degrees
+  // const rotation = useRef(Math.random() * 2 - 1) // Removed for perfect alignment
+
+  // Function to calculate preview position
+  const calculatePreviewPosition = (direction: 'top' | 'right' | 'bottom' | 'left') => {
+    const offset = 260; // Note size (220px) + increased gap (40px)
+    let newPosition = { ...position };
+    switch (direction) {
+      case 'top':
+        newPosition.y -= offset;
+        break;
+      case 'right':
+        newPosition.x += offset;
+        break;
+      case 'bottom':
+        newPosition.y += offset;
+        break;
+      case 'left':
+        newPosition.x -= offset;
+        break;
+    }
+    console.log(`Preview position for ${direction}:`, newPosition);
+    setPreviewPosition(newPosition);
+  };
+
+  // Function to clear preview position
+  const clearPreviewPosition = () => {
+    setPreviewPosition(null);
+  };
 
   return (
     <div
@@ -165,14 +193,181 @@ const StickyNoteComponent = ({
         left: `${position.x}px`,
         top: `${position.y}px`,
         zIndex: isSelected ? 10 : 1,
-        transform: `rotate(${rotation.current}deg)`,
+        // transform: `rotate(${rotation.current}deg)`, // Removed rotation
         transformOrigin: "center center",
         transition: isDragging ? "none" : "transform 0.3s, box-shadow 0.3s",
       }}
-      onMouseDown={handleMouseDown}
-      onMouseDownCapture={handleStartDrag}
+      onMouseDown={(e) => {
+        // Combine selection and drag start logic, check target
+        handleMouseDown(e); // Handles selection
+        if (!isPlusIconTarget(e.target as Element)) {
+          handleStartDrag(e); // Start drag only if not clicking a plus icon
+        }
+      }}
       onDoubleClick={handleDoubleClick}
     >
+      {/* Preview Sticky Note */}
+      {previewPosition && (
+        <div
+          className="absolute w-[220px] h-[220px] bg-gray-500 opacity-50 border border-dashed border-gray-300"
+          style={{
+            left: `${previewPosition.x - position.x}px`,
+            top: `${previewPosition.y - position.y}px`,
+            zIndex: 5,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
+      {/* Quick-add dots - only show when selected */}
+      {isSelected && !isDragging && (
+        <>
+          {/* Top dot */}
+          <div
+            className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-8 w-6 h-6 flex items-center justify-center cursor-pointer"
+            onMouseEnter={() => {
+              setHoveredDot('top');
+              calculatePreviewPosition('top');
+              console.log('Hovering over top plus');
+            }}
+            onMouseLeave={() => {
+              setHoveredDot(null);
+              clearPreviewPosition();
+              console.log('Left top plus');
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log('Clicked top plus');
+              if (onAddAdjacent) {
+                onAddAdjacent('top');
+                clearPreviewPosition(); // Clear preview immediately
+              } else {
+                console.log('onAddAdjacent is undefined');
+              }
+            }}
+          >
+            <div className={cn(
+              "w-2 h-2 rounded-full transition-all duration-200",
+              hoveredDot === 'top' ? "scale-0" : "bg-blue-400/50"
+            )} />
+            {hoveredDot === 'top' && (
+              <div className="absolute w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <Plus className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+
+          {/* Right dot */}
+          <div
+            className="absolute right-0 top-1/2 translate-x-8 -translate-y-1/2 w-6 h-6 flex items-center justify-center cursor-pointer"
+            onMouseEnter={() => {
+              setHoveredDot('right');
+              calculatePreviewPosition('right');
+              console.log('Hovering over right plus');
+            }}
+            onMouseLeave={() => {
+              setHoveredDot(null);
+              clearPreviewPosition();
+              console.log('Left right plus');
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log('Clicked right plus');
+              if (onAddAdjacent) {
+                onAddAdjacent('right');
+                clearPreviewPosition(); // Clear preview immediately
+              } else {
+                console.log('onAddAdjacent is undefined');
+              }
+            }}
+          >
+            <div className={cn(
+              "w-2 h-2 rounded-full transition-all duration-200",
+              hoveredDot === 'right' ? "scale-0" : "bg-blue-400/50"
+            )} />
+            {hoveredDot === 'right' && (
+              <div className="absolute w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <Plus className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+
+          {/* Bottom dot */}
+          <div
+            className="absolute bottom-0 left-1/2 -translate-x-1/2 translate-y-8 w-6 h-6 flex items-center justify-center cursor-pointer"
+            onMouseEnter={() => {
+              setHoveredDot('bottom');
+              calculatePreviewPosition('bottom');
+              console.log('Hovering over bottom plus');
+            }}
+            onMouseLeave={() => {
+              setHoveredDot(null);
+              clearPreviewPosition();
+              console.log('Left bottom plus');
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log('Clicked bottom plus');
+              if (onAddAdjacent) {
+                onAddAdjacent('bottom');
+                clearPreviewPosition(); // Clear preview immediately
+              } else {
+                console.log('onAddAdjacent is undefined');
+              }
+            }}
+          >
+            <div className={cn(
+              "w-2 h-2 rounded-full transition-all duration-200",
+              hoveredDot === 'bottom' ? "scale-0" : "bg-blue-400/50"
+            )} />
+            {hoveredDot === 'bottom' && (
+              <div className="absolute w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <Plus className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+
+          {/* Left dot */}
+          <div
+            className="absolute left-0 top-1/2 -translate-x-8 -translate-y-1/2 w-6 h-6 flex items-center justify-center cursor-pointer"
+            onMouseEnter={() => {
+              setHoveredDot('left');
+              calculatePreviewPosition('left');
+              console.log('Hovering over left plus');
+            }}
+            onMouseLeave={() => {
+              setHoveredDot(null);
+              clearPreviewPosition();
+              console.log('Left left plus');
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              console.log('Clicked left plus');
+              if (onAddAdjacent) {
+                onAddAdjacent('left');
+                clearPreviewPosition(); // Clear preview immediately
+              } else {
+                console.log('onAddAdjacent is undefined');
+              }
+            }}
+          >
+            <div className={cn(
+              "w-2 h-2 rounded-full transition-all duration-200",
+              hoveredDot === 'left' ? "scale-0" : "bg-blue-400/50"
+            )} />
+            {hoveredDot === 'left' && (
+              <div className="absolute w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center">
+                <Plus className="w-4 h-4 text-white" />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
       <div
         className={cn(
           "w-full h-full transition-all duration-200",
@@ -272,5 +467,13 @@ const StickyNoteComponent = ({
   );
 };
 
-// Export the memoized version
+// Helper function to check if the target is within a plus icon element
+const isPlusIconTarget = (target: Element | null): boolean => {
+  if (!target) return false;
+  // Check if the target or its parent has the specific classes/structure of the plus icon container
+  // Adjust selector as needed based on the exact DOM structure
+  return target.closest('.absolute[class*="-translate-x-1/2"], .absolute[class*="-translate-y-1/2"]') !== null;
+};
+
+// Memoize the component
 export const StickyNote = memo(StickyNoteComponent);
