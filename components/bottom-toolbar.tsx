@@ -365,7 +365,7 @@ export function BottomToolbar({
             </div>
           </ToolCell>
 
-          {/* Pen Tool */}
+          {/* Pen Tool - Added */}
           <ToolCell
             isActive={activeTool === "pen"}
             onClick={() => handleToolClick("pen")}
@@ -375,13 +375,13 @@ export function BottomToolbar({
           >
             <div className="relative w-full h-full flex items-center justify-center">
               <Image
-                src="/images/pen-tool-2.png"
+                src="/images/Pen-Tool.png"
                 alt="Pen Tool"
                 width={64}
                 height={64}
                 className={cn(
-                  "object-contain transition-all",
-                  activeTool === "pen" ? "brightness-[2.0] contrast-[1.1]" : "brightness-[1.25] contrast-[1.05]",
+                  "object-contain transition-all filter",
+                  activeTool === "pen" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
                 )}
                 priority
               />
