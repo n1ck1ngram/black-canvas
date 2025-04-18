@@ -26,6 +26,7 @@ export function BottomToolbar({
 }: BottomToolbarProps) {
   const [hoveredTool, setHoveredTool] = useState<Tool>(null)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [showCustomColorPicker, setShowCustomColorPicker] = useState(false)
 
   // Ensure the toolbar doesn't interfere with cursor tracking
   useEffect(() => {
@@ -56,18 +57,35 @@ export function BottomToolbar({
     }
   }
 
+  // Handle custom color picker
+  const handleColorPickerClick = () => {
+    setShowCustomColorPicker(true)
+  }
+
   // Color options for the color picker
   const colorOptions = [
-    { name: "White", value: "#ffffff" },
-    { name: "Light Gray", value: "#d1d1d1" },
-    { name: "Coral", value: "#ff9d9d" },
-    { name: "Peach", value: "#ffc59d" },
-    { name: "Yellow", value: "#ffe07d" },
-    { name: "Light Green", value: "#c1f0c1" },
-    { name: "Cyan", value: "#a1e9e9" },
-    { name: "Blue", value: "#7ab2ff" },
-    { name: "Lavender", value: "#d3c0ff" },
-    { name: "Pink", value: "#ffb6d9" },
+    // Top row (10 colors)
+    { name: "Orange", value: "#FF6B4B" },
+    { name: "Light Orange", value: "#FFA04B" },
+    { name: "Yellow", value: "#FFD84B" },
+    { name: "Green", value: "#4BFF7B" },
+    { name: "Turquoise", value: "#4BFFD8" },
+    { name: "Blue", value: "#4B9FFF" },
+    { name: "Purple", value: "#9F4BFF" },
+    { name: "Pink", value: "#FF4B9F" },
+    { name: "White", value: "#FFFFFF" },
+    { name: "Gray", value: "#666666" },
+    // Bottom row (9 colors + picker)
+    { name: "Light Pink", value: "#FFB6B6" },
+    { name: "Light Peach", value: "#FFD6B6" },
+    { name: "Light Yellow", value: "#FFF6B6" },
+    { name: "Light Green", value: "#B6FFB6" },
+    { name: "Light Turquoise", value: "#B6FFF6" },
+    { name: "Light Blue", value: "#B6D6FF" },
+    { name: "Light Purple", value: "#D6B6FF" },
+    { name: "Light Pink", value: "#FFB6D6" },
+    { name: "Dark Gray", value: "#CCCCCC" },
+    { name: "Color Picker", value: "picker" }
   ]
 
   // Calculate the slider position percentage
@@ -113,30 +131,60 @@ export function BottomToolbar({
             <div className="h-16 w-px bg-[#444444]"></div>
 
             {/* Color picker */}
-            <div className="flex items-center justify-center gap-3 px-1">
-              {colorOptions.map((color) => (
-                <div key={color.value} className="relative">
+            <div className="flex flex-col gap-2">
+              {/* Top row */}
+              <div className="flex items-center gap-2">
+                {colorOptions.slice(0, 10).map((color) => (
                   <button
+                    key={color.value}
                     className={cn(
-                      "w-7 h-7 rounded-full transition-all duration-150",
-                      "flex items-center justify-center",
+                      "w-7 h-7 rounded-full transition-all duration-150 relative",
+                      selectedColor === color.value && "ring-2 ring-offset-2 ring-offset-[#2a2a2a]"
                     )}
                     style={{
                       backgroundColor: color.value,
+                      ...(selectedColor === color.value && { '--tw-ring-color': color.value } as any)
                     }}
                     onClick={() => handleColorSelect(color.value)}
                     title={color.name}
-                  >
-                    {selectedColor === color.value && (
-                      <div
-                        className="absolute inset-[-4px] rounded-full border-2"
-                        style={{ borderColor: color.value }}
-                      />
+                  />
+                ))}
+              </div>
+              
+              {/* Bottom row */}
+              <div className="flex items-center gap-2">
+                {colorOptions.slice(10).map((color) => (
+                  <button
+                    key={color.value}
+                    className={cn(
+                      "w-7 h-7 rounded-full transition-all duration-150 relative",
+                      selectedColor === color.value && "ring-2 ring-offset-2 ring-offset-[#2a2a2a]",
+                      color.value === "picker" && "bg-gradient-to-r from-[#FF0000] via-[#00FF00] to-[#0000FF]"
                     )}
-                  </button>
-                </div>
-              ))}
+                    style={{
+                      backgroundColor: color.value !== "picker" ? color.value : undefined,
+                      ...(selectedColor === color.value && { '--tw-ring-color': color.value } as any)
+                    }}
+                    onClick={() => color.value === "picker" ? handleColorPickerClick() : handleColorSelect(color.value)}
+                    title={color.name}
+                  />
+                ))}
+              </div>
             </div>
+          </div>
+        )}
+
+        {showCustomColorPicker && (
+          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-[#2a2a2a] rounded-lg border border-[#333333] shadow-lg overflow-hidden">
+            <input
+              type="color"
+              value={selectedColor}
+              onChange={(e) => {
+                handleColorSelect(e.target.value);
+                setShowCustomColorPicker(false);
+              }}
+              className="w-[200px] h-[200px] cursor-pointer"
+            />
           </div>
         )}
 
