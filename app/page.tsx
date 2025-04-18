@@ -1,7 +1,6 @@
 "use client"
-import { useState, useCallback, useRef, useEffect } from "react"
-
-import type React from "react"
+import { useState, useCallback, useRef, useEffect, Fragment } from "react"
+import type { ReactElement } from "react"
 
 import { TopNavigation } from "@/components/top-navigation"
 import { BottomToolbar } from "@/components/bottom-toolbar"
@@ -14,6 +13,9 @@ import { Button } from "@/components/ui/button"
 import { StickyNotePreview } from "@/components/sticky-note-preview"
 import { SimpleTextPreview } from "@/components/simple-text-preview"
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog"
+import { ShapesTool, ShapeType } from "@/components/shapes-tool"
+import { ShapesPreview } from "@/components/shapes-preview"
+import { ShapesToolbar } from "@/components/shapes-toolbar"
 
 // Define the sticky note type
 interface Note {
@@ -28,7 +30,14 @@ interface SimpleTextType {
   id: string
   content: string
   position: { x: number; y: number }
-  color: string
+  style: {
+    fontSize: number
+    fontFamily: string
+    alignment: 'left' | 'center' | 'right'
+    isBold: boolean
+    isItalic: boolean
+    color: string
+  }
 }
 
 // Define the typewriter text type
@@ -38,6 +47,24 @@ interface TypewriterText {
   position: { x: number; y: number }
   fontSize: number
   color: string
+}
+
+// Define the shape type
+interface Shape {
+  id: string
+  type: ShapeType
+  position: { x: number; y: number }
+  size: { width: number; height: number }
+  color: string
+  content: string
+  style: {
+    fontSize: number
+    fontFamily: string
+    alignment: 'left' | 'center' | 'right'
+    isBold: boolean
+    isItalic: boolean
+    textColor: string
+  }
 }
 
 // Define the history action type
@@ -54,6 +81,9 @@ type HistoryAction = {
     | "delete_text"
     | "add_stroke"
     | "delete_stroke"
+    | "add_shape"
+    | "update_shape"
+    | "delete_shape"
   data: any
   undo: () => void
   redo: () => void
@@ -62,6 +92,54 @@ type HistoryAction = {
 // Canvas size (much larger than viewport)
 const CANVAS_WIDTH = 10000
 const CANVAS_HEIGHT = 10000
+
+// Add a stable ID generator function at the top level
+function generateStableId(prefix: string) {
+  // Use a combination of prefix and random string that will be stable between server and client
+  return `${prefix}-${Math.random().toString(36).substring(2, 15)}`
+}
+
+// Add type for preview components
+const renderPreviews = (
+  activeTool: string | null,
+  mousePosition: { x: number; y: number },
+  canvasToScreen: (x: number, y: number) => { x: number; y: number },
+  zoom: number,
+  selectedShapeType: ShapeType | null,
+  shapeColor: string
+): React.ReactElement => {
+  const screenPosition = canvasToScreen(mousePosition.x, mousePosition.y);
+
+  return (
+    <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 30 }}>
+      {activeTool === "sticky" && (
+        <StickyNotePreview
+          key="sticky-preview"
+          position={screenPosition}
+          zoom={zoom}
+        />
+      )}
+
+      {activeTool === "text" && (
+        <SimpleTextPreview
+          key="text-preview"
+          position={screenPosition}
+          zoom={zoom}
+        />
+      )}
+
+      {activeTool === "shapes" && selectedShapeType !== null && (
+        <ShapesPreview
+          key="shape-preview"
+          position={screenPosition}
+          zoom={zoom}
+          shapeType={selectedShapeType}
+          color={shapeColor}
+        />
+      )}
+    </div>
+  );
+};
 
 export default function WhiteboardApp() {
   // State for the active tool
@@ -101,6 +179,12 @@ export default function WhiteboardApp() {
   const [historyIndex, setHistoryIndex] = useState(-1)
   const [strokes, setStrokes] = useState<any[]>([]) // Store strokes for undo/redo
 
+  // Add state for shapes
+  const [shapes, setShapes] = useState<Shape[]>([])
+  const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null)
+  const [selectedShapeType, setSelectedShapeType] = useState<ShapeType | null>(null)
+  const [shapeColor, setShapeColor] = useState<string>("#4B9FFF") // Default blue color
+
   // References
   const canvasRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -136,7 +220,8 @@ export default function WhiteboardApp() {
       setSelectedStrokeId(null);
       handleStrokeSelect(null); // Ensure EnhancedPaint knows
     }
-  }, [selectedNoteId, selectedTextId, selectedSimpleTextId, selectedStrokeId]);
+    if (selectedShapeId) setSelectedShapeId(null)
+  }, [selectedNoteId, selectedTextId, selectedSimpleTextId, selectedStrokeId, selectedShapeId]);
 
   // Initialize view to center of canvas
   useEffect(() => {
@@ -377,22 +462,64 @@ export default function WhiteboardApp() {
   // Handle canvas click
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent | MouseEvent) => {
-      console.log(`[handleCanvasClick] Fired. Active tool: ${activeTool}`);
-      
-      // Skip if clicking on a sticky note or its children
       const target = e.target as Element;
-      const closestNote = target.closest('.sticky-note');
-      if (closestNote) return;
+      const container = (e.currentTarget as Element);
+      
+      // Only proceed if the click target is the container itself (canvas background)
+      // or an element without the data-interactive attribute.
+      const closestInteractive = target.closest('[data-interactive="true"]');
+      if (closestInteractive) {
+        // console.log("[handleCanvasClick] Clicked on an interactive element, stopping.");
+        return; // Stop if the click landed on an interactive element
+      }
+      
+      // Log only when a background click intended for placement occurs
+      console.log(`[handleCanvasClick] Background clicked. Active tool: ${activeTool}`);
 
       // Handle placement tools
-      if (activeTool === "sticky" || activeTool === "text" || activeTool === "typewriter") {
+      if (activeTool === "sticky" || activeTool === "text" || activeTool === "typewriter" || activeTool === "shapes") {
         const event = e as React.MouseEvent;
         const canvasCoords = screenToCanvas(event.clientX, event.clientY);
         
-        if (activeTool === "sticky") {
+        if (activeTool === "shapes" && selectedShapeType) {
+          console.log("[handleCanvasClick] Placing shape:", selectedShapeType);
+          const newShape: Shape = {
+            id: generateStableId('shape'),
+            type: selectedShapeType,
+            position: {
+              x: canvasCoords.x - 75, // Center the shape
+              y: canvasCoords.y - 75,
+            },
+            size: { width: 150, height: 150 },
+            color: shapeColor,
+            content: "",
+            style: {
+              fontSize: 16,
+              fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+              alignment: 'center',
+              isBold: false,
+              isItalic: false,
+              textColor: '#FFFFFF'
+            }
+          };
+          
+          // Log the new shape data before adding
+          console.log("[handleCanvasClick] New shape data:", JSON.stringify(newShape));
+
+          addToHistory({
+            type: "add_shape",
+            data: newShape,
+            undo: () => setShapes((prev) => prev.filter((shape) => shape.id !== newShape.id)),
+            redo: () => setShapes((prev) => [...prev, newShape]),
+          });
+
+          setShapes((prev) => [...prev, newShape]);
+          setSelectedShapeId(newShape.id);
+          setActiveTool("pointer");
+        } else if (activeTool === "sticky") {
           console.log("[handleCanvasClick] Placing sticky note");
           const newNote: Note = {
-            id: `note-${Date.now()}`,
+            id: generateStableId('note'),
             content: "",
             position: {
               x: canvasCoords.x - 110,
@@ -412,10 +539,17 @@ export default function WhiteboardApp() {
         } else if (activeTool === "text") {
           console.log("[handleCanvasClick] Text tool active, attempting to place simple text...");
           const newSimpleText: SimpleTextType = {
-            id: `simple-text-${Date.now()}`,
+            id: generateStableId('simple-text'),
             content: "",
             position: canvasCoords,
-            color: "#FFFFFF", // Default white
+            style: {
+              fontSize: 16,
+              fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+              alignment: 'left',
+              isBold: false,
+              isItalic: false,
+              color: '#FFFFFF'
+            }
           };
           addToHistory({
             type: "add_simple_text",
@@ -424,16 +558,16 @@ export default function WhiteboardApp() {
             redo: () => setSimpleTexts((prev) => [...prev, newSimpleText]),
           });
           setSimpleTexts((prev) => [...prev, newSimpleText]);
-          setSelectedSimpleTextId(newSimpleText.id); // Select the new text
-          setSelectedTextId(null); // Deselect typewriter text
-          setSelectedNoteId(null); // Deselect note
-          setSelectedStrokeId(null); // Deselect stroke
-          setActiveTool("pointer"); // Default back to pointer tool
+          setSelectedSimpleTextId(newSimpleText.id);
+          setSelectedTextId(null);
+          setSelectedNoteId(null);
+          setSelectedStrokeId(null);
+          setActiveTool("pointer");
           setContainerCursor('default');
         } else if (activeTool === "typewriter") {
           console.log("[handleCanvasClick] Typewriter tool active, attempting to place typewriter text...");
           const newText: TypewriterText = {
-            id: `text-${Date.now()}`,
+            id: generateStableId('text'),
             content: "",
             position: canvasCoords,
             fontSize: 16,
@@ -446,57 +580,38 @@ export default function WhiteboardApp() {
             redo: () => setTexts((prev) => [...prev, newText]),
           });
           setTexts((prevTexts) => [...prevTexts, newText]);
-          setSelectedTextId(newText.id); // Select the new typewriter text
-          setSelectedSimpleTextId(null); // Deselect simple text
-          setSelectedNoteId(null); // Deselect note
-          setSelectedStrokeId(null); // Deselect stroke
-          setActiveTool("pointer"); // Default back to pointer tool
+          setSelectedTextId(newText.id);
+          setSelectedSimpleTextId(null);
+          setSelectedNoteId(null);
+          setSelectedStrokeId(null);
+          setActiveTool("pointer");
           setContainerCursor('default');
         }
       }
     },
-    [activeTool, addToHistory, screenToCanvas]
+    [activeTool, addToHistory, screenToCanvas, selectedShapeType, shapeColor]
   );
 
+  // Handle tool selection
   const handleToolSelect = useCallback(
     (tool: string | null) => {
-      console.log(`[handleToolSelect] Tool selected: ${tool}, current tool: ${activeTool}`);
+      console.log("Tool selected:", tool)
+      setActiveTool(tool)
       
-      // If clicking the same tool or switching to pointer, preserve selection
-      if (tool === activeTool || tool === "pointer") {
-        console.log("[handleToolSelect] Switching to pointer mode, preserving selection");
-        setActiveTool("pointer");
-        if (containerRef.current) {
-          containerRef.current.style.cursor = 'default';
-        }
-        return;
-      }
-
-      // Only deselect when activating specific tools
-      if (tool === "spray" || tool === "move") {
-        console.log(`[handleToolSelect] Activating ${tool}, deselecting all`);
-        handleDeselectAll();
-      }
-
-      // Set the tool
-      setActiveTool(tool);
-
-      // Update cursor
-      if (containerRef.current) {
-        switch (tool) {
-          case 'move':
-            containerRef.current.style.cursor = 'grab';
-            break;
-          case 'spray':
-            containerRef.current.style.cursor = 'crosshair';
-            break;
-          default:
-            containerRef.current.style.cursor = 'default';
-        }
+      // Reset selection states when switching tools
+      setSelectedNoteId(null)
+      setSelectedTextId(null)
+      setSelectedSimpleTextId(null)
+      setSelectedStrokeId(null)
+      setSelectedShapeId(null)
+      
+      // Reset shape type when switching away from shapes tool
+      if (tool !== "shapes") {
+        setSelectedShapeType(null)
       }
     },
-    [activeTool, handleDeselectAll]
-  );
+    [setSelectedStrokeId]
+  )
 
   // Handle color selection
   const handleColorSelect = (color: string) => {
@@ -667,12 +782,13 @@ export default function WhiteboardApp() {
   // Handle delete key press for notes, texts, and strokes
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only trigger delete if we're not editing text in a textarea or input
       const isEditingText = document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT"
       
       if ((e.key === "Delete" || e.key === "Backspace") && !isEditingText) {
-        if (selectedSimpleTextId) {
-          deleteSelectedSimpleText();
+        if (selectedShapeId) {
+          deleteSelectedShape()
+        } else if (selectedSimpleTextId) {
+          deleteSelectedSimpleText()
         } else if (selectedNoteId) {
           const dontShow = localStorage.getItem("dontShowDeleteConfirmation") === "true"
           if (dontShow) {
@@ -692,7 +808,7 @@ export default function WhiteboardApp() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [selectedSimpleTextId, selectedNoteId, selectedTextId, selectedStrokeId, deleteSelectedStroke])
+  }, [selectedShapeId, selectedSimpleTextId, selectedNoteId, selectedTextId, selectedStrokeId, deleteSelectedStroke])
 
   // Add keyboard event listeners for space bar panning
   useEffect(() => {
@@ -744,13 +860,34 @@ export default function WhiteboardApp() {
       type: "update_simple_text",
       data: { id, content, previousContent },
       undo: () => {
-        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content: previousContent } : text)))
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content: previousContent } : text)));
       },
       redo: () => {
-        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content } : text)))
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content } : text)));
       },
     });
     setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, content } : text)));
+  };
+
+  // Update simple text style
+  const handleSimpleTextStyleChange = (id: string, style: Partial<SimpleTextType['style']>) => {
+    const textToUpdate = simpleTexts.find((text) => text.id === id);
+    if (!textToUpdate) return;
+    const previousStyle = textToUpdate.style;
+    const newStyle = { ...previousStyle, ...style };
+    
+    addToHistory({
+      type: "update_simple_text",
+      data: { id, style: newStyle, previousStyle },
+      undo: () => {
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, style: previousStyle } : text)));
+      },
+      redo: () => {
+        setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, style: newStyle } : text)));
+      },
+    });
+    
+    setSimpleTexts((prev) => prev.map((text) => (text.id === id ? { ...text, style: newStyle } : text)));
   };
 
   // Update simple text position
@@ -819,7 +956,7 @@ export default function WhiteboardApp() {
     console.log('New note position:', newPosition);
 
     const newNote: Note = {
-      id: `note-${Date.now()}`,
+      id: generateStableId('note'),
       content: "",
       position: newPosition,
       color: "#121212",
@@ -835,6 +972,100 @@ export default function WhiteboardApp() {
     setNotes(prev => [...prev, newNote]);
     setSelectedNoteId(newNote.id);
   }, [notes, addToHistory]);
+
+  // Handle shape selection
+  const handleShapeSelect = useCallback((type: ShapeType) => {
+    console.log("Shape type selected:", type)
+    setSelectedShapeType(type)
+  }, [])
+
+  // Handle shape color selection
+  const handleShapeColorSelect = useCallback((color: string) => {
+    console.log("Shape color selected:", color)
+    setShapeColor(color)
+  }, [])
+
+  // Handle shape content change
+  const handleShapeContentChange = (id: string, content: string) => {
+    const shapeToUpdate = shapes.find((shape) => shape.id === id)
+    if (!shapeToUpdate) return
+
+    const previousContent = shapeToUpdate.content
+
+    addToHistory({
+      type: "update_shape",
+      data: { id, content, previousContent },
+      undo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, content: previousContent } : shape)))
+      },
+      redo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, content } : shape)))
+      },
+    })
+
+    setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, content } : shape)))
+  }
+
+  // Handle shape position change
+  const handleShapePositionChange = (id: string, position: { x: number; y: number }) => {
+    const shapeToUpdate = shapes.find((shape) => shape.id === id)
+    if (!shapeToUpdate) return
+
+    const previousPosition = shapeToUpdate.position
+
+    addToHistory({
+      type: "update_shape",
+      data: { id, position, previousPosition },
+      undo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, position: previousPosition } : shape)))
+      },
+      redo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, position } : shape)))
+      },
+    })
+
+    setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, position } : shape)))
+  }
+
+  // Handle shape style change
+  const handleShapeStyleChange = (id: string, style: Partial<Shape['style']>) => {
+    const shapeToUpdate = shapes.find((shape) => shape.id === id)
+    if (!shapeToUpdate) return
+
+    const previousStyle = shapeToUpdate.style
+    const newStyle = { ...previousStyle, ...style }
+
+    addToHistory({
+      type: "update_shape",
+      data: { id, style: newStyle, previousStyle },
+      undo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, style: previousStyle } : shape)))
+      },
+      redo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, style: newStyle } : shape)))
+      },
+    })
+
+    setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, style: newStyle } : shape)))
+  }
+
+  // Add deleteSelectedShape function
+  const deleteSelectedShape = () => {
+    if (selectedShapeId) {
+      const shapeToDelete = shapes.find((shape) => shape.id === selectedShapeId)
+      if (!shapeToDelete) return
+
+      addToHistory({
+        type: "delete_shape",
+        data: shapeToDelete,
+        undo: () => setShapes((prev) => [...prev, shapeToDelete]),
+        redo: () => setShapes((prev) => prev.filter((shape) => shape.id !== shapeToDelete.id)),
+      })
+
+      setShapes((prev) => prev.filter((shape) => shape.id !== selectedShapeId))
+      setSelectedShapeId(null)
+    }
+  }
 
   return (
     <div className="flex flex-col h-screen bg-black text-gray-200">
@@ -858,22 +1089,6 @@ export default function WhiteboardApp() {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* Sticky Note Preview - Moved outside the transformed container */}
-        {activeTool === "sticky" && (
-          <StickyNotePreview
-            position={canvasToScreen(mousePosition.x, mousePosition.y)}
-            zoom={zoom}
-          />
-        )}
-
-        {/* Simple Text Preview - Moved outside the transformed container */}
-        {activeTool === "text" && (
-          <SimpleTextPreview
-            position={canvasToScreen(mousePosition.x, mousePosition.y)}
-            zoom={zoom}
-          />
-        )}
-
         {/* Canvas Container - this is the zoomable/pannable area */}
         <div
           className="canvas-container"
@@ -883,11 +1098,12 @@ export default function WhiteboardApp() {
             width: CANVAS_WIDTH,
             height: CANVAS_HEIGHT,
             position: "absolute",
+            zIndex: 10,
           }}
+          onClick={handleCanvasClick}
         >
           {/* Dotted Grid Background */}
           <div
-            ref={gridRef}
             className="absolute inset-0 w-full h-full"
             style={{
               backgroundColor: "#000000",
@@ -895,108 +1111,152 @@ export default function WhiteboardApp() {
               backgroundSize: `40px 40px`,
               zIndex: 1,
             }}
-            onClick={handleCanvasClick}
           ></div>
 
+          {/* Preview Components */}
+          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 30 }}>
+            {renderPreviews(activeTool, mousePosition, canvasToScreen, zoom, selectedShapeType, shapeColor)}
+          </div>
+
           {/* Enhanced Paint Canvas */}
-          <EnhancedPaint
-            color={sprayColor}
-            isActive={activeTool === "spray"}
-            zoom={zoom}
-            pan={pan}
-            screenToCanvas={screenToCanvas}
-            brushSize={brushSize}
-            onClearRef={clearCanvasRef}
-            onSelectStroke={handleStrokeSelect}
-            selectedStrokeId={selectedStrokeId}
-            alwaysSelectable={true}
-            stickyToolActive={activeTool === "sticky"}
-            deleteStrokeRef={deleteStrokeRef}
-            activeTool={activeTool}
-            onBackgroundClick={handleDeselectAll}
-          />
+          <div style={{ zIndex: 20 }} className="absolute inset-0"> {/* z-index for paint */}
+            <EnhancedPaint
+              color={sprayColor}
+              isActive={activeTool === "spray"}
+              zoom={zoom}
+              pan={pan}
+              screenToCanvas={screenToCanvas}
+              brushSize={brushSize}
+              onClearRef={clearCanvasRef}
+              onSelectStroke={handleStrokeSelect}
+              selectedStrokeId={selectedStrokeId}
+              alwaysSelectable={true}
+              stickyToolActive={activeTool === "sticky"}
+              deleteStrokeRef={deleteStrokeRef}
+              activeTool={activeTool}
+              onBackgroundClick={handleDeselectAll}
+            />
+          </div>
 
           {/* Render all sticky notes */}
-          {notes.map((note) => (
-            <StickyNote
-              key={note.id}
-              id={note.id}
-              content={note.content}
-              position={note.position}
-              color={note.color}
-              isSelected={selectedNoteId === note.id}
-              onSelect={() => {
-                setSelectedNoteId(note.id);
-                // Also deselect other types when selecting a note
-                if (selectedTextId) setSelectedTextId(null);
-                if (selectedStrokeId) {
-                   setSelectedStrokeId(null);
-                   if (handleStrokeSelect) handleStrokeSelect(null);
-                }
-              }}
-              onContentChange={(content) => handleNoteContentChange(note.id, content)}
-              onPositionChange={(position) => handleNotePositionChange(note.id, position)}
-              onDelete={() => {
-                setSelectedNoteId(note.id);
-                const dontShow = localStorage.getItem("dontShowDeleteConfirmation") === "true"
-                if (dontShow) {
-                  deleteSelectedNote()
-                } else {
-                  setIsDeleteDialogOpen(true)
-                }
-              }}
-              onAddAdjacent={(direction) => handleAddAdjacentNote(note.id, direction)}
-              zoom={zoom}
-              screenToCanvas={screenToCanvas}
-              activeTool={activeTool}
-            />
-          ))}
+          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for notes */}
+            {notes.map((note) => (
+              <StickyNote
+                key={note.id}
+                id={note.id}
+                content={note.content}
+                position={note.position}
+                color={note.color}
+                isSelected={selectedNoteId === note.id}
+                onSelect={() => {
+                  setSelectedNoteId(note.id);
+                  // Also deselect other types when selecting a note
+                  if (selectedTextId) setSelectedTextId(null);
+                  if (selectedStrokeId) {
+                     setSelectedStrokeId(null);
+                     if (handleStrokeSelect) handleStrokeSelect(null);
+                  }
+                }}
+                onContentChange={(content) => handleNoteContentChange(note.id, content)}
+                onPositionChange={(position) => handleNotePositionChange(note.id, position)}
+                onDelete={() => {
+                  setSelectedNoteId(note.id);
+                  const dontShow = localStorage.getItem("dontShowDeleteConfirmation") === "true"
+                  if (dontShow) {
+                    deleteSelectedNote()
+                  } else {
+                    setIsDeleteDialogOpen(true)
+                  }
+                }}
+                onAddAdjacent={(direction) => handleAddAdjacentNote(note.id, direction)}
+                zoom={zoom}
+                screenToCanvas={screenToCanvas}
+                activeTool={activeTool}
+              />
+            ))}
+          </div>
 
           {/* Render all simple texts */}
-          {simpleTexts.map((text) => (
-            <SimpleText
-              key={text.id}
-              id={text.id}
-              content={text.content}
-              position={text.position}
-              color={text.color}
-              isSelected={selectedSimpleTextId === text.id}
-              onSelect={() => {
-                setSelectedSimpleTextId(text.id);
-                // Deselect other types
-                if (selectedNoteId) setSelectedNoteId(null);
-                if (selectedTextId) setSelectedTextId(null);
-                if (selectedStrokeId) {
-                  setSelectedStrokeId(null);
-                  if (handleStrokeSelect) handleStrokeSelect(null);
-                }
-              }}
-              onContentChange={(content) => handleSimpleTextContentChange(text.id, content)}
-              onPositionChange={(position) => handleSimpleTextPositionChange(text.id, position)}
-              zoom={zoom}
-              screenToCanvas={screenToCanvas}
-              activeTool={activeTool}
-            />
-          ))}
+          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for simple texts */}
+            {simpleTexts.map((text) => (
+              <SimpleText
+                key={text.id}
+                id={text.id}
+                content={text.content}
+                position={text.position}
+                style={text.style}
+                isSelected={selectedSimpleTextId === text.id}
+                onSelect={() => {
+                  setSelectedSimpleTextId(text.id);
+                  if (selectedNoteId) setSelectedNoteId(null);
+                  if (selectedTextId) setSelectedTextId(null);
+                  if (selectedStrokeId) {
+                    setSelectedStrokeId(null);
+                    if (handleStrokeSelect) handleStrokeSelect(null);
+                  }
+                }}
+                onContentChange={(content) => handleSimpleTextContentChange(text.id, content)}
+                onPositionChange={(position) => handleSimpleTextPositionChange(text.id, position)}
+                onStyleChange={(style) => handleSimpleTextStyleChange(text.id, style)}
+                zoom={zoom}
+                screenToCanvas={screenToCanvas}
+                activeTool={activeTool}
+              />
+            ))}
+          </div>
 
           {/* Render all typewriter texts */}
-          {texts.map((text) => (
-            <TypewriterTool
-              key={text.id}
-              id={text.id}
-              content={text.content}
-              position={text.position}
-              fontSize={text.fontSize}
-              color={text.color}
-              isSelected={selectedTextId === text.id}
-              onSelect={() => setSelectedTextId(text.id)}
-              onContentChange={(content) => handleTextContentChange(text.id, content)}
-              onPositionChange={(position) => handleTextPositionChange(text.id, position)}
-              zoom={zoom}
-              screenToCanvas={screenToCanvas}
-              activeTool={activeTool}
-            />
-          ))}
+          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for typewriter */}
+            {texts.map((text) => (
+              <TypewriterTool
+                key={text.id}
+                id={text.id}
+                content={text.content}
+                position={text.position}
+                fontSize={text.fontSize}
+                color={text.color}
+                isSelected={selectedTextId === text.id}
+                onSelect={() => setSelectedTextId(text.id)}
+                onContentChange={(content) => handleTextContentChange(text.id, content)}
+                onPositionChange={(position) => handleTextPositionChange(text.id, position)}
+                zoom={zoom}
+                screenToCanvas={screenToCanvas}
+                activeTool={activeTool}
+              />
+            ))}
+          </div>
+
+          {/* Render all shapes */}
+          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for shapes */}
+            {shapes.map((shape) => {
+              // Log each shape being rendered
+              console.log('[Render Shapes] Rendering shape:', JSON.stringify(shape)); 
+              return (
+                <ShapesTool
+                  key={shape.id}
+                  id={shape.id}
+                  shape={shape}
+                  isSelected={selectedShapeId === shape.id}
+                  onSelect={() => {
+                    setSelectedShapeId(shape.id)
+                    if (selectedNoteId) setSelectedNoteId(null)
+                    if (selectedTextId) setSelectedTextId(null)
+                    if (selectedSimpleTextId) setSelectedSimpleTextId(null)
+                    if (selectedStrokeId) {
+                      setSelectedStrokeId(null)
+                      if (handleStrokeSelect) handleStrokeSelect(null)
+                    }
+                  }}
+                  onContentChange={(content) => handleShapeContentChange(shape.id, content)}
+                  onPositionChange={(position) => handleShapePositionChange(shape.id, position)}
+                  onStyleChange={(style) => handleShapeStyleChange(shape.id, style)}
+                  zoom={zoom}
+                  screenToCanvas={screenToCanvas}
+                  activeTool={activeTool}
+                />
+              )
+            })}
+          </div>
         </div>
 
         {/* Bottom Toolbar */}
@@ -1008,6 +1268,18 @@ export default function WhiteboardApp() {
           brushSize={brushSize}
           onBrushSizeChange={handleBrushSizeChange}
         />
+
+        {/* Shapes Toolbar - Positioned at the bottom */}
+        {activeTool === "shapes" && (
+          <div className="absolute bottom-28 left-1/2 transform -translate-x-1/2 z-50">
+            <ShapesToolbar
+              onShapeSelect={handleShapeSelect}
+              onColorSelect={handleShapeColorSelect}
+              selectedShape={selectedShapeType}
+              selectedColor={shapeColor}
+            />
+          </div>
+        )}
       </main>
 
       {/* Delete Confirmation Dialog */}

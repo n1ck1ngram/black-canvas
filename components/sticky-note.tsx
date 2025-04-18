@@ -452,7 +452,7 @@ const StickyNoteComponent = ({
         {/* Delete button - only show when selected */}
         {isSelected && (
           <button
-            className="absolute top-2 right-2 p-1 rounded-full bg-black/50 hover:bg-black/70 transition-colors z-20"
+            className="absolute bottom-2 right-2 p-1 rounded-full bg-black/20 hover:bg-black/40 transition-colors z-20"
             onClick={(e) => {
               e.stopPropagation();
               if (clickHandledRef) clickHandledRef.current = true;
@@ -462,7 +462,7 @@ const StickyNoteComponent = ({
               cursor: 'pointer',
             }}
           >
-            <Trash2 className="w-4 h-4 text-gray-300" />
+            <Trash2 className="w-4 h-4 text-gray-400/60" />
           </button>
         )}
 

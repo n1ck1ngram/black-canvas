@@ -1,0 +1,1 @@
+export type ShapeType = 'rectangle' | 'circle' | 'diamond' | 'triangle' | 'invertedTriangle' | 'parallelogram' | 'arrow'; 

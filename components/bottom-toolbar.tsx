@@ -4,6 +4,7 @@ import type React from "react"
 import { useState, useEffect } from "react"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
+import { HexColorPicker } from "react-colorful"
 
 type Tool = "pointer" | "move" | "pen" | "sticky" | "text" | "spray" | "shapes" | "tape" | "typewriter" | null
 
@@ -14,6 +15,12 @@ interface BottomToolbarProps {
   selectedColor?: string
   brushSize?: number
   onBrushSizeChange?: (size: number) => void
+}
+
+interface ColorOption {
+  name: string;
+  value: string;
+  type: 'color' | 'picker';
 }
 
 export function BottomToolbar({
@@ -41,7 +48,11 @@ export function BottomToolbar({
 
   // Update color picker visibility when spray tool is activated/deactivated
   useEffect(() => {
-    setShowColorPicker(activeTool === "spray")
+    if (activeTool === "spray") {
+      setShowColorPicker(true)
+    } else {
+      setShowColorPicker(false)
+    }
   }, [activeTool])
 
   // Update the handleToolClick function to ensure it properly toggles tools
@@ -62,7 +73,6 @@ export function BottomToolbar({
     setShowCustomColorPicker(true)
   }
 
-  // Color options for the color picker
   const colorOptions = [
     // Top row (10 colors)
     { name: "Orange", value: "#FF6B4B" },
@@ -137,6 +147,7 @@ export function BottomToolbar({
                 {colorOptions.slice(0, 10).map((color) => (
                   <button
                     key={color.value}
+                    onClick={() => color.value === "picker" ? handleColorPickerClick() : handleColorSelect(color.value)}
                     className={cn(
                       "w-7 h-7 rounded-full transition-all duration-150 relative",
                       selectedColor === color.value && "ring-2 ring-offset-2 ring-offset-[#2a2a2a]"
@@ -145,7 +156,6 @@ export function BottomToolbar({
                       backgroundColor: color.value,
                       ...(selectedColor === color.value && { '--tw-ring-color': color.value } as any)
                     }}
-                    onClick={() => handleColorSelect(color.value)}
                     title={color.name}
                   />
                 ))}
@@ -165,7 +175,13 @@ export function BottomToolbar({
                       backgroundColor: color.value !== "picker" ? color.value : undefined,
                       ...(selectedColor === color.value && { '--tw-ring-color': color.value } as any)
                     }}
-                    onClick={() => color.value === "picker" ? handleColorPickerClick() : handleColorSelect(color.value)}
+                    onClick={() => {
+                      if (color.value === "picker") {
+                        handleColorPickerClick()
+                      } else {
+                        handleColorSelect(color.value)
+                      }
+                    }}
                     title={color.name}
                   />
                 ))}
@@ -175,15 +191,13 @@ export function BottomToolbar({
         )}
 
         {showCustomColorPicker && (
-          <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-[#2a2a2a] rounded-lg border border-[#333333] shadow-lg overflow-hidden">
-            <input
-              type="color"
-              value={selectedColor}
-              onChange={(e) => {
-                handleColorSelect(e.target.value);
-                setShowCustomColorPicker(false);
+          <div className="absolute bottom-full mb-2 p-2 bg-white rounded-lg shadow-lg">
+            <HexColorPicker
+              color={selectedColor}
+              onChange={(color) => {
+                onColorSelect?.(color)
+                setShowCustomColorPicker(false)
               }}
-              className="w-[200px] h-[200px] cursor-pointer"
             />
           </div>
         )}
@@ -321,7 +335,7 @@ export function BottomToolbar({
                 height={64}
                 className={cn(
                   "object-contain transition-all filter",
-                  activeTool === "shapes" ? "brightness-[1.6] contrast-[1.4]" : "brightness-[0.9] contrast-[1.4]",
+                  activeTool === "shapes" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
                 )}
                 priority
               />

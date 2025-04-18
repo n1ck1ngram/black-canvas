@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Minus, Plus, RotateCcw } from "lucide-react"
 import Image from "next/image"
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
 
 interface TopNavigationProps {
   zoom: number
@@ -155,7 +157,12 @@ export function TopNavigation({
           </svg>
         </button>
 
-        <button className="bg-[#7c3aed] hover:bg-[#6d28d9] text-white rounded-md px-6 py-2">Share</button>
+        <Button
+          className="bg-[#3b82f6] hover:bg-[#2563eb] text-white"
+          onClick={() => {/* existing onClick handler */}}
+        >
+          Share
+        </Button>
       </div>
     </div>
   )
