@@ -86,24 +86,27 @@ export function SimpleText({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     
+    // If hand tool is active, do nothing here (let container handle pan)
     if (activeTool === "move") {
-      e.stopPropagation();
       return;
     }
 
     e.stopPropagation();
 
-    if (!isSelected) {
-      onSelect();
-    }
+    // Always allow selection when pointer tool is active or already selected
+    if (activeTool === "pointer" || isSelected) {
+      if (!isSelected) {
+        onSelect();
+      }
 
-    if (!isEditing) {
-      setIsDragging(true);
-      const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-      setResizeStartPos({
-        x: canvasCoords.x - position.x,
-        y: canvasCoords.y - position.y
-      });
+      if (!isEditing) {
+        setIsDragging(true);
+        const canvasCoords = screenToCanvas(e.clientX, e.clientY);
+        setResizeStartPos({
+          x: canvasCoords.x - position.x,
+          y: canvasCoords.y - position.y
+        });
+      }
     }
   };
 
@@ -241,6 +244,7 @@ export function SimpleText({
         width: dimensions.width,
         height: dimensions.height,
         minHeight: style.fontSize * 1.2 + 'px', // Ensure minimum height based on font size
+        pointerEvents: 'auto'
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}

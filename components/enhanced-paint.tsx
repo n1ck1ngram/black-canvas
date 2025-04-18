@@ -310,8 +310,7 @@ export function EnhancedPaint({
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     // If hand tool is active, do nothing here (let container handle pan)
     if (activeTool === "move") {
-      e.stopPropagation();
-      return;
+      return; // Remove e.stopPropagation() to allow pan to work
     }
 
     // Ignore clicks if sticky note tool is active to avoid interference
@@ -323,8 +322,8 @@ export function EnhancedPaint({
     // Only allow drawing if the spray tool is active
     const canDraw = isActive
 
-    // Allow selection even if the spray tool is not active (if alwaysSelectable is true)
-    const canSelect = isActive || alwaysSelectable
+    // Allow selection when pointer tool is active or spray tool is active
+    const canSelect = activeTool === "pointer" || isActive
 
     if (!canDraw && !canSelect) return
 
@@ -361,42 +360,31 @@ export function EnhancedPaint({
       }
     }
 
-    // Helper function to check if the target is an interactive element
-    const isTargetInteractive = (target: EventTarget | null): boolean => {
-      let element = target as HTMLElement | null;
-      while (element && element !== document.body && element !== containerRef.current) {
-        if (element.getAttribute('data-interactive-element') === 'true') {
-          return true; // Found an interactive ancestor/self
-        }
-        element = element.parentElement;
-      }
-      return false; // No interactive element found in the hierarchy up to container/body
-    };
-
     if (clickedStrokeId) {
-      // If we clicked on a stroke, select it
-      setSelectedStrokeId(clickedStrokeId)
-      if (onSelectStroke) {
-        onSelectStroke(clickedStrokeId)
+      // If we clicked on a stroke and can select, select it
+      if (canSelect) {
+        setSelectedStrokeId(clickedStrokeId)
+        if (onSelectStroke) {
+          onSelectStroke(clickedStrokeId)
+        }
+        e.stopPropagation(); // Stop propagation only when selecting
       }
-      // Don't propagate if a stroke was selected
-      // e.stopPropagation(); // Removing this - let page handle deselection if needed
       return
     } else {
-      // If no stroke was clicked, check if the target was an interactive element
-      if (isTargetInteractive(e.target)) {
-        console.log("[EnhancedPaint] Click target is interactive element. Ignoring background click.");
-        // If an interactive element was clicked, ensure no stroke is selected
-        // but don't trigger the main background click.
-        setSelectedStrokeId(null);
-        onSelectStroke?.(null);
-      } else {
-        // Only trigger background click if the target is NOT interactive
-        // (and implicitly not a stroke, checked above)
-        console.log("[EnhancedPaint] Click target is not interactive. Calling onBackgroundClick.");
-        setSelectedStrokeId(null);
-        onSelectStroke?.(null);
-        onBackgroundClick?.();
+      // If no stroke was clicked and we can select, deselect current stroke
+      if (canSelect) {
+        setSelectedStrokeId(null)
+        if (onSelectStroke) {
+          onSelectStroke(null)
+        }
+      }
+      // If no stroke was clicked, and we are not starting a drawing,
+      // treat it as a background click for deselection purposes.
+      if (!canDraw && onBackgroundClick) {
+        console.log("[EnhancedPaint] Detected background click, calling onBackgroundClick.");
+        onBackgroundClick();
+        // Optionally stop propagation if needed, but might not be necessary
+        // e.stopPropagation(); 
       }
     }
 
@@ -423,8 +411,7 @@ export function EnhancedPaint({
         drawSoftCircle(ctx, x, y, brushSize, color)
       }
 
-      // Stop propagation to prevent canvas click
-      e.stopPropagation();
+      e.stopPropagation(); // Stop propagation only when drawing
     }
   }
 
@@ -565,7 +552,7 @@ export function EnhancedPaint({
     <>
       <div
         ref={containerRef}
-        className="absolute inset-0"
+        className="absolute inset-0 z-10"
         style={{
           pointerEvents: pointerEventsStyle,
           // Ensure paint layer is below other interactive elements when not active

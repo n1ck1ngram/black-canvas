@@ -423,45 +423,14 @@ export default function WhiteboardApp() {
     }
   }, [history, historyIndex])
 
-  // Effect to handle global clicks for deselection and placement
-  useEffect(() => {
-    const handleGlobalClick = (event: MouseEvent) => {
-      const target = event.target as Element;
-      
-      // Skip if clicking on any interactive element (sticky notes, text, etc.)
-      if (target.closest('[data-interactive=true]')) {
-        return;
-      }
-      
-      // Only handle clicks directly on the grid background
-      if (gridRef.current && target === gridRef.current) {
-        // If we're in pointer mode, allow deselection
-        if (activeTool === "pointer") {
-          handleDeselectAll();
-        }
-        
-        // Handle panning for other cases
-        if (event.button === 0 && activeTool !== "move" && !event.altKey) {
-          event.preventDefault();
-          setIsPanning(true);
-          setPanStart({
-            x: event.clientX - pan.x,
-            y: event.clientY - pan.y,
-          });
-          if (containerRef.current) {
-            containerRef.current.style.cursor = "grabbing";
-          }
-        }
-      }
-    };
-    
-    document.addEventListener('mousedown', handleGlobalClick);
-    return () => { document.removeEventListener('mousedown', handleGlobalClick); };
-  }, [activeTool, pan.x, pan.y, handleDeselectAll]);
-
   // Handle canvas click
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent | MouseEvent) => {
+      // If spray tool is active, let EnhancedPaint handle the event exclusively
+      if (activeTool === "spray") {
+        return;
+      }
+      
       const target = e.target as Element;
       const container = (e.currentTarget as Element);
       
@@ -1104,6 +1073,7 @@ export default function WhiteboardApp() {
         >
           {/* Dotted Grid Background */}
           <div
+            ref={gridRef}
             className="absolute inset-0 w-full h-full"
             style={{
               backgroundColor: "#000000",
@@ -1113,13 +1083,8 @@ export default function WhiteboardApp() {
             }}
           ></div>
 
-          {/* Preview Components */}
-          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 30 }}>
-            {renderPreviews(activeTool, mousePosition, canvasToScreen, zoom, selectedShapeType, shapeColor)}
-          </div>
-
           {/* Enhanced Paint Canvas */}
-          <div style={{ zIndex: 20 }} className="absolute inset-0"> {/* z-index for paint */}
+          <div style={{ zIndex: 20 }} className="absolute inset-0"> {/* z-index for paint, removed pointerEvents: 'none' */}
             <EnhancedPaint
               color={sprayColor}
               isActive={activeTool === "spray"}
@@ -1138,8 +1103,9 @@ export default function WhiteboardApp() {
             />
           </div>
 
-          {/* Render all sticky notes */}
-          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for notes */}
+          {/* Interactive Elements Container */}
+          <div className="absolute inset-0" style={{ zIndex: 30, pointerEvents: 'none' }}>
+            {/* Sticky Notes */}
             {notes.map((note) => (
               <StickyNote
                 key={note.id}
@@ -1150,12 +1116,11 @@ export default function WhiteboardApp() {
                 isSelected={selectedNoteId === note.id}
                 onSelect={() => {
                   setSelectedNoteId(note.id);
-                  // Also deselect other types when selecting a note
-                  if (selectedTextId) setSelectedTextId(null);
-                  if (selectedStrokeId) {
-                     setSelectedStrokeId(null);
-                     if (handleStrokeSelect) handleStrokeSelect(null);
-                  }
+                  setSelectedTextId(null);
+                  setSelectedSimpleTextId(null);
+                  setSelectedStrokeId(null);
+                  if (handleStrokeSelect) handleStrokeSelect(null);
+                  setSelectedShapeId(null);
                 }}
                 onContentChange={(content) => handleNoteContentChange(note.id, content)}
                 onPositionChange={(position) => handleNotePositionChange(note.id, position)}
@@ -1174,10 +1139,8 @@ export default function WhiteboardApp() {
                 activeTool={activeTool}
               />
             ))}
-          </div>
 
-          {/* Render all simple texts */}
-          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for simple texts */}
+            {/* Simple Texts */}
             {simpleTexts.map((text) => (
               <SimpleText
                 key={text.id}
@@ -1188,12 +1151,11 @@ export default function WhiteboardApp() {
                 isSelected={selectedSimpleTextId === text.id}
                 onSelect={() => {
                   setSelectedSimpleTextId(text.id);
-                  if (selectedNoteId) setSelectedNoteId(null);
-                  if (selectedTextId) setSelectedTextId(null);
-                  if (selectedStrokeId) {
-                    setSelectedStrokeId(null);
-                    if (handleStrokeSelect) handleStrokeSelect(null);
-                  }
+                  setSelectedNoteId(null);
+                  setSelectedTextId(null);
+                  setSelectedStrokeId(null);
+                  if (handleStrokeSelect) handleStrokeSelect(null);
+                  setSelectedShapeId(null);
                 }}
                 onContentChange={(content) => handleSimpleTextContentChange(text.id, content)}
                 onPositionChange={(position) => handleSimpleTextPositionChange(text.id, position)}
@@ -1203,10 +1165,8 @@ export default function WhiteboardApp() {
                 activeTool={activeTool}
               />
             ))}
-          </div>
 
-          {/* Render all typewriter texts */}
-          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for typewriter */}
+            {/* Typewriter Texts */}
             {texts.map((text) => (
               <TypewriterTool
                 key={text.id}
@@ -1224,39 +1184,38 @@ export default function WhiteboardApp() {
                 activeTool={activeTool}
               />
             ))}
-          </div>
 
-          {/* Render all shapes */}
-          <div style={{ zIndex: 30 }} className="absolute inset-0"> {/* z-index for shapes */}
-            {shapes.map((shape) => {
-              // Log each shape being rendered
-              console.log('[Render Shapes] Rendering shape:', JSON.stringify(shape)); 
-              return (
-                <ShapesTool
-                  key={shape.id}
-                  id={shape.id}
-                  shape={shape}
-                  isSelected={selectedShapeId === shape.id}
-                  onSelect={() => {
-                    setSelectedShapeId(shape.id)
-                    if (selectedNoteId) setSelectedNoteId(null)
-                    if (selectedTextId) setSelectedTextId(null)
-                    if (selectedSimpleTextId) setSelectedSimpleTextId(null)
-                    if (selectedStrokeId) {
-                      setSelectedStrokeId(null)
-                      if (handleStrokeSelect) handleStrokeSelect(null)
-                    }
-                  }}
-                  onContentChange={(content) => handleShapeContentChange(shape.id, content)}
-                  onPositionChange={(position) => handleShapePositionChange(shape.id, position)}
-                  onStyleChange={(style) => handleShapeStyleChange(shape.id, style)}
-                  zoom={zoom}
-                  screenToCanvas={screenToCanvas}
-                  activeTool={activeTool}
-                />
-              )
-            })}
+            {/* Shapes */}
+            {shapes.map((shape) => (
+              <ShapesTool
+                key={shape.id}
+                id={shape.id}
+                shape={shape}
+                isSelected={selectedShapeId === shape.id}
+                onSelect={() => {
+                  setSelectedShapeId(shape.id)
+                  if (selectedNoteId) setSelectedNoteId(null)
+                  if (selectedTextId) setSelectedTextId(null)
+                  if (selectedSimpleTextId) setSelectedSimpleTextId(null)
+                  if (selectedStrokeId) {
+                    setSelectedStrokeId(null)
+                    if (handleStrokeSelect) handleStrokeSelect(null)
+                  }
+                }}
+                onContentChange={(content) => handleShapeContentChange(shape.id, content)}
+                onPositionChange={(position) => handleShapePositionChange(shape.id, position)}
+                onStyleChange={(style) => handleShapeStyleChange(shape.id, style)}
+                zoom={zoom}
+                screenToCanvas={screenToCanvas}
+                activeTool={activeTool}
+              />
+            ))}
           </div>
+        </div>
+
+        {/* Preview Components - Rendered outside the transformed container */}
+        <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 40 }}>
+          {renderPreviews(activeTool, mousePosition, canvasToScreen, zoom, selectedShapeType, shapeColor)}
         </div>
 
         {/* Bottom Toolbar */}

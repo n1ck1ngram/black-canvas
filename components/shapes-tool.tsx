@@ -257,46 +257,84 @@ export function ShapesTool({
   const renderShape = () => {
     const width = shape.size.width
     const height = shape.size.height
+    const strokeWidth = 4 // Adjust thickness as desired
 
     switch (shape.type) {
       case "rectangle":
-        return <rect width={width} height={height} fill={shape.color} rx="4" />
+        return <rect 
+                  width={width} 
+                  height={height} 
+                  fill="none" 
+                  stroke={shape.color} 
+                  strokeWidth={strokeWidth} 
+                  rx="4" 
+                />
       case "circle":
-        return <circle cx={width/2} cy={height/2} r={Math.min(width, height)/2} fill={shape.color} />
+        return <circle 
+                  cx={width/2} 
+                  cy={height/2} 
+                  r={Math.max(0, Math.min(width, height)/2 - strokeWidth/2)} // Adjust radius for stroke width
+                  fill="none" 
+                  stroke={shape.color} 
+                  strokeWidth={strokeWidth} 
+                />
       case "diamond":
         return (
           <polygon
-            points={`${width/2},0 ${width},${height/2} ${width/2},${height} 0,${height/2}`}
-            fill={shape.color}
+            points={`${width/2},${strokeWidth/2} ${width - strokeWidth/2},${height/2} ${width/2},${height - strokeWidth/2} ${strokeWidth/2},${height/2}`}
+            fill="none"
+            stroke={shape.color}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round" // Add for smoother corners
           />
         )
       case "triangle":
         return (
           <polygon
-            points={`${width/2},0 ${width},${height} 0,${height}`}
-            fill={shape.color}
+            // Adjust points slightly for stroke width
+            points={`${width/2},${strokeWidth/2} ${width - strokeWidth/2},${height - strokeWidth/2} ${strokeWidth/2},${height - strokeWidth/2}`}
+            fill="none"
+            stroke={shape.color}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round" // Add for smoother corners
           />
         )
       case "invertedTriangle":
         return (
           <polygon
-            points={`0,0 ${width},0 ${width/2},${height}`}
-            fill={shape.color}
+            // Adjust points slightly for stroke width
+            points={`${strokeWidth/2},${strokeWidth/2} ${width - strokeWidth/2},${strokeWidth/2} ${width/2},${height - strokeWidth/2}`}
+            fill="none"
+            stroke={shape.color}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round" // Add for smoother corners
           />
         )
       case "parallelogram":
+        // Needs adjustment for stroke width on slanted edges
+        const skewOffset = 20;
         return (
           <polygon
-            points={`20,0 ${width},0 ${width-20},${height} 0,${height}`}
-            fill={shape.color}
+            points={`${skewOffset + strokeWidth/2},${strokeWidth/2} ${width - strokeWidth/2},${strokeWidth/2} ${width-skewOffset - strokeWidth/2},${height - strokeWidth/2} ${strokeWidth/2},${height - strokeWidth/2}`}
+            fill="none"
+            stroke={shape.color}
+            strokeWidth={strokeWidth}
+            strokeLinejoin="round" // Add for smoother corners
           />
         )
       case "arrow":
+        // Adjust path for stroke width - might need more complex calculation depending on desired appearance
+        const arrowHeadSize = Math.min(20, width * 0.2, height * 0.4);
+        const shaftLength = width - arrowHeadSize - strokeWidth;
+        const arrowY = height / 2;
         return (
           <path
-            d={`M0,${height/2} H${width-20} L${width-10},${height/4} L${width},${height/2} L${width-10},${height*3/4} L${width-20},${height/2}`}
-            fill={shape.color}
+            d={`M${strokeWidth/2},${arrowY} H${shaftLength} L${shaftLength + arrowHeadSize/2},${arrowY - arrowHeadSize/2} L${shaftLength + arrowHeadSize},${arrowY} L${shaftLength + arrowHeadSize/2},${arrowY + arrowHeadSize/2} L${shaftLength},${arrowY}`}
+            fill="none"
+            stroke={shape.color}
+            strokeWidth={strokeWidth}
             strokeLinejoin="round"
+            strokeLinecap="round"
           />
         )
       default:
@@ -308,19 +346,27 @@ export function ShapesTool({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button !== 0 || isEditing) return // Only handle left click, ignore if editing
     
-    e.stopPropagation()
-    onSelect() // Select first
-    setIsDragging(true)
+    // If hand tool is active, do nothing here (let container handle pan)
+    if (activeTool === "move") {
+      return; // Remove stopPropagation to allow pan to work
+    }
 
-    // Calculate initial canvas coords of the click
-    const clickCanvasCoords = screenToCanvas(e.clientX, e.clientY)
-    
-    // Calculate and store the offset from the shape's top-left corner
-    setDragStartOffset({
-      x: clickCanvasCoords.x - shape.position.x,
-      y: clickCanvasCoords.y - shape.position.y,
-    })
-    
+    // Only handle selection when pointer tool is active or when already selected
+    if (activeTool === "pointer" || isSelected) {
+      e.stopPropagation(); // Stop propagation only when handling selection
+      onSelect(); // Select first
+
+      setIsDragging(true);
+      
+      // Calculate initial canvas coords of the click
+      const clickCanvasCoords = screenToCanvas(e.clientX, e.clientY);
+      
+      // Calculate and store the offset from the shape's top-left corner
+      setDragStartOffset({
+        x: clickCanvasCoords.x - shape.position.x,
+        y: clickCanvasCoords.y - shape.position.y,
+      });
+    }
   }
 
   // Handle mouse move for dragging
@@ -458,19 +504,23 @@ export function ShapesTool({
 
       <div
         ref={containerRef}
+        data-interactive="true"
         className={cn(
-          "absolute select-none",
-          isSelected && "ring-2 ring-[#4B9FFF]",
-          isResizing ? "cursor-grabbing" : "cursor-move"
+          "absolute", 
+          isSelected ? "cursor-default" : "cursor-pointer",
+          isDragging && "cursor-grabbing",
+          isResizing && `cursor-${resizeHandle}-resize`
         )}
         style={{
-          transform: `translate(${shape.position.x}px, ${shape.position.y}px)`,
-          width: shape.size.width,
-          height: shape.size.height,
+          left: `${shape.position.x}px`,
+          top: `${shape.position.y}px`,
+          width: `${shape.size.width}px`,
+          height: `${shape.size.height}px`,
+          zIndex: isSelected ? 10 : 1,
+          pointerEvents: 'auto'
         }}
         onMouseDown={handleMouseDown}
         onDoubleClick={handleDoubleClick}
-        data-interactive="true"
       >
         <svg
           width={shape.size.width}

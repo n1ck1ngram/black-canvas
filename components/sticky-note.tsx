@@ -63,38 +63,13 @@ const StickyNoteComponent = ({
 
   // Handle clicks on the main note div
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Left button only
-    if (e.button !== 0) return;
+    // Stop this click from bubbling up to the document listener
+    e.stopPropagation();
     
-    // If hand tool is active, do nothing here (let container handle pan)
-    if (activeTool === "move") {
-      e.stopPropagation(); // Stop propagation ONLY for move tool to allow container pan
-      return;
-    }
-
-    // Prevent interfering with double-click and text selection inside textarea
-    if (isEditing && e.target === textareaRef.current) {
-      // Don't set handled ref, allow default text interactions
-      return;
-    }
-
-    if (clickHandledRef) clickHandledRef.current = true;
-
-    e.stopPropagation(); // Stop propagation since this element handled the click
-
-    // Select if not selected
+    // Select the note if not already selected
     if (!isSelected) {
-      console.log(`[StickyNote handleMouseDown] Pointer tool active (${activeTool === 'pointer'}), selecting note ${id}`);
       onSelect();
-    }
-
-    // Initiate drag state only if not editing AND not clicking a plus icon
-    if (!isEditing && !isPlusIconTarget(e.target as Element)) {
-      console.log("[StickyNote handleMouseDown] Initiating drag state"); // Log drag initiation
-      setIsDragging(true);
-      // Calculate drag offset in canvas coordinates
-      const canvasCoords = screenToCanvas(e.clientX, e.clientY);
-      setDragOffset({ x: canvasCoords.x - position.x, y: canvasCoords.y - position.y });
+      return;
     }
   };
 
@@ -112,6 +87,41 @@ const StickyNoteComponent = ({
       }, 0); 
     }
   };
+
+  // Make sure the drag handler also stops propagation
+  const handleStartDrag = (e: React.MouseEvent) => {
+    // Check if the click target is one of the plus buttons or the delete button
+    const targetElement = e.target as Element;
+    const isControlClick = targetElement.closest('.cursor-pointer') || targetElement.closest('button');
+
+    // If clicking on a control (+ or delete), don't start dragging
+    if (isControlClick) {
+      // We might still want to select the note if it wasn't selected
+      if (!isSelected) {
+        onSelect();
+      }
+      // Don't stop propagation here, let the button's onClick handle it
+      return;
+    }
+
+    if (!noteRef.current) return
+
+    // Don't start drag if in editing mode and clicking on the textarea
+    if (isEditing && e.target instanceof HTMLTextAreaElement) return
+
+    // Always stop propagation
+    e.stopPropagation()
+
+    onSelect()
+    setIsDragging(true)
+
+    // Calculate drag offset in canvas coordinates
+    const canvasCoords = screenToCanvas(e.clientX, e.clientY)
+    setDragOffset({
+      x: canvasCoords.x - position.x,
+      y: canvasCoords.y - position.y,
+    })
+  }
 
   // Handle mouse move for dragging
   useEffect(() => {
@@ -131,21 +141,14 @@ const StickyNoteComponent = ({
 
     const handleMouseUp = () => {
       setIsDragging(false)
-      console.log("[StickyNote drag useEffect->handleMouseUp] Setting isDragging to false"); // Log mouse up
     }
 
     if (isDragging) {
-      console.log("[StickyNote drag useEffect] isDragging=true, adding listeners"); // Log listener add
       document.addEventListener("mousemove", handleMouseMove)
       document.addEventListener("mouseup", handleMouseUp)
-    } else {
-      // Optional: Log when removing listeners if needed for debugging
-      // console.log("[StickyNote drag useEffect] isDragging=false, listeners should be removed or not added"); 
     }
 
     return () => {
-      // Optional: Log cleanup if needed
-      // console.log("[StickyNote drag useEffect] Cleanup, removing listeners");
       document.removeEventListener("mousemove", handleMouseMove)
       document.removeEventListener("mouseup", handleMouseUp)
     }
@@ -203,20 +206,18 @@ const StickyNoteComponent = ({
       data-interactive="true"
       className={cn(
         "absolute w-[220px] h-[220px]",
-        // Disable pointer events entirely if move tool is active
-        activeTool === 'move' ? "pointer-events-none" :
-          // Otherwise, apply appropriate cursor based on state
-          (isDragging ? "cursor-grabbing" : isEditing ? "cursor-text" : "cursor-grab"),
+        isDragging ? "cursor-grabbing" : isEditing ? "cursor-text" : "cursor-grab",
       )}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         zIndex: isSelected ? 10 : 1,
-        // transform: `rotate(${rotation.current}deg)`, // Removed rotation
         transformOrigin: "center center",
         transition: isDragging ? "none" : "transform 0.3s, box-shadow 0.3s",
+        pointerEvents: 'auto'
       }}
       onMouseDown={handleMouseDown}
+      onMouseDownCapture={handleStartDrag}
       onDoubleClick={handleDoubleClick}
     >
       {/* Preview Sticky Note */}
@@ -250,9 +251,7 @@ const StickyNoteComponent = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              e.preventDefault();
               console.log('Clicked top plus');
-              if (clickHandledRef) clickHandledRef.current = true;
               if (onAddAdjacent) {
                 onAddAdjacent('top');
                 clearPreviewPosition(); // Clear preview immediately
@@ -287,9 +286,7 @@ const StickyNoteComponent = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              e.preventDefault();
               console.log('Clicked right plus');
-              if (clickHandledRef) clickHandledRef.current = true;
               if (onAddAdjacent) {
                 onAddAdjacent('right');
                 clearPreviewPosition(); // Clear preview immediately
@@ -324,9 +321,7 @@ const StickyNoteComponent = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              e.preventDefault();
               console.log('Clicked bottom plus');
-              if (clickHandledRef) clickHandledRef.current = true;
               if (onAddAdjacent) {
                 onAddAdjacent('bottom');
                 clearPreviewPosition(); // Clear preview immediately
@@ -361,9 +356,7 @@ const StickyNoteComponent = ({
             }}
             onClick={(e) => {
               e.stopPropagation();
-              e.preventDefault();
               console.log('Clicked left plus');
-              if (clickHandledRef) clickHandledRef.current = true;
               if (onAddAdjacent) {
                 onAddAdjacent('left');
                 clearPreviewPosition(); // Clear preview immediately
@@ -455,7 +448,6 @@ const StickyNoteComponent = ({
             className="absolute bottom-2 right-2 p-1 rounded-full bg-black/20 hover:bg-black/40 transition-colors z-20"
             onClick={(e) => {
               e.stopPropagation();
-              if (clickHandledRef) clickHandledRef.current = true;
               onDelete?.();
             }}
             style={{
@@ -473,12 +465,11 @@ const StickyNoteComponent = ({
           value={content}
           onChange={(e) => onContentChange(e.target.value)}
           placeholder="Type your note here..."
-          onClick={(e) => e.stopPropagation()}
+          onClick={handleMouseDown}
           readOnly={!isEditing}
           style={{
             background: "transparent",
-            // Let parent div handle cursor based on pointer-events
-            cursor: "inherit",
+            cursor: isEditing ? "text" : isSelected ? "grab" : "pointer",
           }}
         />
       </div>

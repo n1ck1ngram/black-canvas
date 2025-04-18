@@ -1,3 +1,4 @@
+import type React from "react"
 import { cn } from "@/lib/utils"
 
 interface StickyNotePreviewProps {
@@ -9,30 +10,39 @@ export function StickyNotePreview({ position, zoom }: StickyNotePreviewProps) {
   const width = 220
   const height = 220
 
+  // Calculate the top-left corner position based on the center position and zoom
+  const scaledWidth = width * zoom;
+  const scaledHeight = height * zoom;
+  const translateX = position.x - scaledWidth / 2;
+  const translateY = position.y - scaledHeight / 2;
+
+
   return (
     <div
       className={cn(
         "pointer-events-none absolute",
-        "transition-transform duration-150 ease-out"
+        "transition-transform duration-150 ease-out" // Keep smooth transition if needed
       )}
       style={{
-        transform: `translate(${position.x - (width * zoom) / 2}px, ${
-          position.y - (height * zoom) / 2
-        }px) scale(${zoom})`,
-        width,
-        height,
+        // Apply transform for both positioning and scaling
+        transform: `translate(${translateX}px, ${translateY}px) scale(${zoom})`,
+        width: `${width}px`, // Base width
+        height: `${height}px`, // Base height
+        transformOrigin: 'top left', // Scale from the top-left corner
+        zIndex: 100, // Ensure preview is on top
+        opacity: 0.7 // Keep the opacity if desired
       }}
     >
       <div className="relative w-full h-full">
-        {/* Selection ring */}
+        {/* Optional: Add back the selection ring/indicators if desired */}
+        {/* 
         <div 
           className="absolute inset-0 ring-2 ring-[#4B9FFF] ring-offset-0 rounded-lg opacity-50"
-          style={{
-            transform: 'scale(1.05)',
-          }}
-        />
-        
-        {/* Note preview */}
+          style={{ transform: 'scale(1.05)' }}
+        /> 
+        */}
+
+        {/* Note preview content */}
         <div className="absolute inset-0 bg-[#121212] rounded-lg">
           {/* Edge highlight - subtle light reflection on top edge */}
           <div
@@ -98,13 +108,15 @@ export function StickyNotePreview({ position, zoom }: StickyNotePreviewProps) {
           Click to place note
         </div>
 
-        {/* Corner indicators */}
+        {/* Optional: Add back corner indicators if desired */}
+        {/* 
         <div className="absolute inset-0">
           <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-[#4B9FFF] opacity-50" />
           <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-[#4B9FFF] opacity-50" />
           <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-[#4B9FFF] opacity-50" />
           <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-[#4B9FFF] opacity-50" />
-        </div>
+        </div> 
+        */}
       </div>
     </div>
   )
