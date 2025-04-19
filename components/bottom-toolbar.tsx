@@ -57,8 +57,14 @@ export function BottomToolbar({
 
   // Update the handleToolClick function to ensure it properly toggles tools
   const handleToolClick = (tool: Tool) => {
-    // Pass the tool to the parent component
-    onToolSelect(tool)
+    if (tool === activeTool) {
+      // If clicking the same tool, deactivate it
+      onToolSelect(null)
+      setShowColorPicker(false)
+    } else {
+      // Pass the tool to the parent component
+      onToolSelect(tool)
+    }
   }
 
   // Handle color selection

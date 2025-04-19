@@ -8,6 +8,7 @@ import {
   Italic,
   Type
 } from 'lucide-react';
+import { HexColorPicker } from 'react-colorful';
 
 interface TextOptionsToolbarProps {
   fontSize: number;
@@ -188,7 +189,7 @@ export function TextOptionsToolbar({
                     key={colorOption.value}
                     className={cn(
                       "w-7 h-7 rounded-full transition-all duration-150",
-                      color === colorOption.value && "ring-1 ring-[#4B9FFF]"
+                      color === colorOption.value && "ring-2 ring-[#4B9FFF] ring-offset-2 ring-offset-[#2a2a2a]"
                     )}
                     style={{ backgroundColor: colorOption.value }}
                     onClick={() => {
@@ -207,7 +208,7 @@ export function TextOptionsToolbar({
                     key={colorOption.value}
                     className={cn(
                       "w-7 h-7 rounded-full transition-all duration-150",
-                      color === colorOption.value && "ring-1 ring-[#4B9FFF]",
+                      color === colorOption.value && "ring-2 ring-[#4B9FFF] ring-offset-2 ring-offset-[#2a2a2a]",
                       colorOption.value === "picker" && "bg-gradient-to-r from-[#FF0000] via-[#00FF00] to-[#0000FF]"
                     )}
                     style={{

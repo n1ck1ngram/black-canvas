@@ -87,6 +87,18 @@ export function ShapesPreview({ position, zoom, shapeType, color }: ShapesPrevie
     }
   }
 
+  // Add text positioning styles based on shape type
+  const getTextStyles = () => {
+    switch (shapeType) {
+      case 'diamond':
+        return {
+          paddingTop: '35%' // Adjust this value to move preview text up/down
+        }
+      default:
+        return {}
+    }
+  }
+
   return (
     <div
       className={cn(
@@ -124,10 +136,21 @@ export function ShapesPreview({ position, zoom, shapeType, color }: ShapesPrevie
         <div 
           className={cn(
             "absolute inset-0 flex items-center justify-center",
-            "text-white/70 text-sm font-medium",
+            "text-white/70 text-sm font-medium text-center",
             "bg-black/10 backdrop-blur-[1px] rounded-lg",
             "transition-opacity duration-150"
           )}
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: '100%',
+            height: '100%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
         >
           Click to place
         </div>

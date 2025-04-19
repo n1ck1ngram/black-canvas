@@ -183,7 +183,7 @@ export default function WhiteboardApp() {
   const [shapes, setShapes] = useState<Shape[]>([])
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null)
   const [selectedShapeType, setSelectedShapeType] = useState<ShapeType | null>(null)
-  const [shapeColor, setShapeColor] = useState<string>("#4B9FFF") // Default blue color
+  const [shapeColor, setShapeColor] = useState<string>("#FFFFFF") // Changed from #4B9FFF to #FFFFFF
 
   // References
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -456,10 +456,10 @@ export default function WhiteboardApp() {
             id: generateStableId('shape'),
             type: selectedShapeType,
             position: {
-              x: canvasCoords.x - 75, // Center the shape
-              y: canvasCoords.y - 75,
+              x: canvasCoords.x - 100,
+              y: canvasCoords.y - 100,
             },
-            size: { width: 150, height: 150 },
+            size: { width: 200, height: 200 },
             color: shapeColor,
             content: "",
             style: {
@@ -484,6 +484,7 @@ export default function WhiteboardApp() {
 
           setShapes((prev) => [...prev, newShape]);
           setSelectedShapeId(newShape.id);
+          setSelectedShapeType(null);
           setActiveTool("pointer");
         } else if (activeTool === "sticky") {
           console.log("[handleCanvasClick] Placing sticky note");
@@ -565,6 +566,12 @@ export default function WhiteboardApp() {
   const handleToolSelect = useCallback(
     (tool: string | null) => {
       console.log("Tool selected:", tool)
+      
+      // If switching away from shapes tool, reset the selected shape type
+      if (activeTool === "shapes" && tool !== "shapes") {
+        setSelectedShapeType(null)
+      }
+      
       setActiveTool(tool)
       
       // Reset selection states when switching tools
@@ -573,13 +580,8 @@ export default function WhiteboardApp() {
       setSelectedSimpleTextId(null)
       setSelectedStrokeId(null)
       setSelectedShapeId(null)
-      
-      // Reset shape type when switching away from shapes tool
-      if (tool !== "shapes") {
-        setSelectedShapeType(null)
-      }
     },
-    [setSelectedStrokeId]
+    [activeTool, setSelectedStrokeId]
   )
 
   // Handle color selection
@@ -1036,6 +1038,48 @@ export default function WhiteboardApp() {
     }
   }
 
+  // Add handleShapeSizeChange function
+  const handleShapeSizeChange = (id: string, size: { width: number; height: number }) => {
+    const shapeToUpdate = shapes.find((shape) => shape.id === id)
+    if (!shapeToUpdate) return
+
+    const previousSize = shapeToUpdate.size
+
+    addToHistory({
+      type: "update_shape",
+      data: { id, size, previousSize },
+      undo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, size: previousSize } : shape)))
+      },
+      redo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, size } : shape)))
+      },
+    })
+
+    setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, size } : shape)))
+  }
+
+  // Add handleShapeColorChange function
+  const handleShapeColorChange = (id: string, color: string) => {
+    const shapeToUpdate = shapes.find((shape) => shape.id === id)
+    if (!shapeToUpdate) return
+
+    const previousColor = shapeToUpdate.color
+
+    addToHistory({
+      type: "update_shape",
+      data: { id, color, previousColor },
+      undo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, color: previousColor } : shape)))
+      },
+      redo: () => {
+        setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, color } : shape)))
+      },
+    })
+
+    setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, color } : shape)))
+  }
+
   return (
     <div className="flex flex-col h-screen bg-black text-gray-200">
       {/* Top Navigation */}
@@ -1205,6 +1249,8 @@ export default function WhiteboardApp() {
                 onContentChange={(content) => handleShapeContentChange(shape.id, content)}
                 onPositionChange={(position) => handleShapePositionChange(shape.id, position)}
                 onStyleChange={(style) => handleShapeStyleChange(shape.id, style)}
+                onSizeChange={(size) => handleShapeSizeChange(shape.id, size)}
+                onShapeColorChange={handleShapeColorChange}
                 zoom={zoom}
                 screenToCanvas={screenToCanvas}
                 activeTool={activeTool}

@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { HexColorPicker } from "react-colorful";
 import { cn } from "@/lib/utils";
 import { useClickAway } from "../hooks/use-click-away";
 import { ShapeType } from "@/components/shapes-tool";
+import { X } from "lucide-react";
 
 interface ShapesToolbarProps {
     selectedShape: ShapeType | null;
@@ -16,23 +17,58 @@ const ColorPicker: React.FC<{
     onChange: (color: string) => void;
 }> = ({ color, onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [tempColor, setTempColor] = useState(color);
     const popoverRef = useRef<HTMLDivElement>(null);
-    useClickAway(popoverRef, () => setIsOpen(false));
+    
+    const handleClose = useCallback(() => {
+        if (tempColor !== color) {
+            console.log('Color picker closed. Final color:', tempColor);
+            onChange(tempColor);
+        }
+        setIsOpen(false);
+    }, [tempColor, color, onChange]);
+
+    useClickAway(popoverRef, handleClose);
+
+    const handleClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isOpen) {
+            handleClose();
+        } else {
+            setTempColor(color);
+            setIsOpen(true);
+        }
+    };
+
+    const handleColorChange = (newColor: string) => {
+        setTempColor(newColor);
+        onChange(newColor);
+    };
 
     return (
         <div className="relative">
             <button
                 className="w-8 h-8 rounded-md border border-white/20 transition-colors hover:bg-white/10"
                 style={{ backgroundColor: color }}
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={handleClick}
             />
             {isOpen && (
                 <div 
                     ref={popoverRef}
-                    className="absolute bottom-full left-0 mb-2 bg-[#1a1a1a] border border-white/20 rounded-lg p-2 shadow-lg"
+                    className="absolute bottom-full left-0 mb-2 bg-[#1a1a1a] border border-white/20 rounded-lg p-3 shadow-lg"
                     onClick={(e) => e.stopPropagation()}
                 >
-                    <HexColorPicker color={color} onChange={onChange} />
+                    <button
+                        onClick={handleClose}
+                        className="absolute -top-2 -right-2 p-1 rounded-full bg-[#1a1a1a] border border-white/20 hover:bg-white/10 text-white/60 hover:text-white transition-colors z-10"
+                        aria-label="Close color picker"
+                    >
+                        <X size={12} />
+                    </button>
+                    <HexColorPicker 
+                        color={tempColor} 
+                        onChange={handleColorChange}
+                    />
                 </div>
             )}
         </div>
