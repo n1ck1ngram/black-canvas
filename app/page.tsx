@@ -16,6 +16,8 @@ import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialo
 import { ShapesTool, ShapeType } from "@/components/shapes-tool"
 import { ShapesPreview } from "@/components/shapes-preview"
 import { ShapesToolbar } from "@/components/shapes-toolbar"
+import { PenTool } from "@/components/pen-tool"
+import { TypewriterPreview } from "@/components/typewriter-preview"
 
 // Define the sticky note type
 interface Note {
@@ -128,6 +130,17 @@ const renderPreviews = (
         />
       )}
 
+      {activeTool === "typewriter" && (
+        <TypewriterPreview
+          key="typewriter-preview"
+          position={screenPosition}
+          zoom={zoom}
+          content=""
+          fontSize={16}
+          color="#ffffff"
+        />
+      )}
+
       {activeTool === "shapes" && selectedShapeType !== null && (
         <ShapesPreview
           key="shape-preview"
@@ -184,6 +197,10 @@ export default function WhiteboardApp() {
   const [selectedShapeId, setSelectedShapeId] = useState<string | null>(null)
   const [selectedShapeType, setSelectedShapeType] = useState<ShapeType | null>(null)
   const [shapeColor, setShapeColor] = useState<string>("#FFFFFF") // Changed from #4B9FFF to #FFFFFF
+
+  // Add state for pen tool
+  const [penColor, setPenColor] = useState("#7ab2ff") // Default blue color
+  const [penSize, setPenSize] = useState(20)
 
   // References
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -584,11 +601,22 @@ export default function WhiteboardApp() {
     [activeTool, setSelectedStrokeId]
   )
 
-  // Handle color selection
+  // Handle color selection for both spray and pen tools
   const handleColorSelect = (color: string) => {
-    setSprayColor(color)
-    // Keep the spray tool active after selecting a color
-    setActiveTool("spray")
+    if (activeTool === "spray") {
+      setSprayColor(color)
+    } else if (activeTool === "pen") {
+      setPenColor(color)
+    }
+  }
+
+  // Handle brush size change for both spray and pen tools
+  const handleBrushSizeChange = (size: number) => {
+    if (activeTool === "spray") {
+      setBrushSize(size)
+    } else if (activeTool === "pen") {
+      setPenSize(size)
+    }
   }
 
   // Update note content
@@ -815,11 +843,6 @@ export default function WhiteboardApp() {
     if (clearCanvasRef.current) {
       clearCanvasRef.current()
     }
-  }, [])
-
-  // Add a function to handle brush size changes
-  const handleBrushSizeChange = useCallback((size: number) => {
-    setBrushSize(size)
   }, [])
 
   // Update simple text content
@@ -1226,6 +1249,8 @@ export default function WhiteboardApp() {
                 zoom={zoom}
                 screenToCanvas={screenToCanvas}
                 activeTool={activeTool}
+                showPreview={false}
+                previewPosition={{ x: 0, y: 0 }}
               />
             ))}
 
@@ -1264,13 +1289,24 @@ export default function WhiteboardApp() {
           {renderPreviews(activeTool, mousePosition, canvasToScreen, zoom, selectedShapeType, shapeColor)}
         </div>
 
+        {/* Pen Tool */}
+        {activeTool === "pen" && (
+          <PenTool
+            activeTool={activeTool}
+            onColorSelect={handleColorSelect}
+            selectedColor={penColor}
+            brushSize={penSize}
+            onBrushSizeChange={handleBrushSizeChange}
+          />
+        )}
+
         {/* Bottom Toolbar */}
         <BottomToolbar
           activeTool={activeTool}
           onToolSelect={handleToolSelect}
           onColorSelect={handleColorSelect}
-          selectedColor={sprayColor}
-          brushSize={brushSize}
+          selectedColor={activeTool === "spray" ? sprayColor : activeTool === "pen" ? penColor : "#7ab2ff"}
+          brushSize={activeTool === "spray" ? brushSize : activeTool === "pen" ? penSize : 20}
           onBrushSizeChange={handleBrushSizeChange}
         />
 

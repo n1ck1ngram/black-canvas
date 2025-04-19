@@ -4,6 +4,8 @@ import type React from "react"
 
 import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
+import { useClickAway } from "@/hooks/use-click-away"
+import { TypewriterPreview } from './typewriter-preview'
 
 interface TypewriterToolProps {
   id: string
@@ -15,10 +17,11 @@ interface TypewriterToolProps {
   onSelect: () => void
   onContentChange: (content: string) => void
   onPositionChange: (position: { x: number; y: number }) => void
-  zoom?: number
-  screenToCanvas?: (screenX: number, screenY: number) => { x: number; y: number }
-  activeTool?: string | null
-  clickHandledRef?: React.RefObject<boolean>
+  zoom: number
+  screenToCanvas: (x: number, y: number) => { x: number; y: number }
+  activeTool: string | null
+  showPreview: boolean
+  previewPosition: { x: number; y: number }
 }
 
 export function TypewriterTool({
@@ -31,183 +34,181 @@ export function TypewriterTool({
   onSelect,
   onContentChange,
   onPositionChange,
-  zoom = 1,
-  screenToCanvas = (x, y) => ({ x, y }),
-  activeTool = null,
-  clickHandledRef,
+  zoom,
+  screenToCanvas,
+  activeTool,
+  showPreview,
+  previewPosition,
 }: TypewriterToolProps) {
   const [isDragging, setIsDragging] = useState(false)
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
+  const [dragStartOffset, setDragStartOffset] = useState({ x: 0, y: 0 })
   const [isEditing, setIsEditing] = useState(false)
-  const textRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const [editText, setEditText] = useState(content)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
-  // Focus the textarea when editing mode is activated
+  // Handle click away from text editor
+  useClickAway(containerRef, () => {
+    if (isEditing) {
+      setIsEditing(false)
+      onContentChange(editText)
+    }
+  })
+
+  // Focus textarea when editing starts
   useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus()
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus()
     }
   }, [isEditing])
 
-  // Handle click on the text
-  const handleClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-
-    // If already selected, enter edit mode
-    if (isSelected && !isEditing) {
-      setIsEditing(true)
+  // Handle mouse down for dragging
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return // Only handle left click
+    
+    // If hand tool is active, do nothing here (let container handle pan)
+    if (activeTool === "move") {
       return
     }
 
-    // First click selects the text
-    if (!isSelected) {
-      onSelect()
-    }
-  }
-
-  // Handle textarea click
-  const handleTextareaClick = (e: React.MouseEvent) => {
-    e.stopPropagation()
-
-    if (!isEditing && isSelected) {
-      setIsEditing(true)
-    } else if (!isSelected) {
-      onSelect()
-    }
-  }
-
-  // Start dragging
-  const handleStartDrag = (e: React.MouseEvent) => {
-    if (!textRef.current) return
-
-    // Don't start drag if in editing mode and clicking on the textarea
-    if (isEditing && e.target instanceof HTMLTextAreaElement) return
-
     e.stopPropagation()
     onSelect()
-    setIsDragging(true)
 
-    // Calculate drag offset in canvas coordinates
-    const canvasCoords = screenToCanvas(e.clientX, e.clientY)
-    setDragOffset({
-      x: canvasCoords.x - position.x,
-      y: canvasCoords.y - position.y,
-    })
+    if (isSelected) {
+      setIsDragging(true)
+      const clickCanvasCoords = screenToCanvas(e.clientX, e.clientY)
+      setDragStartOffset({
+        x: clickCanvasCoords.x - position.x,
+        y: clickCanvasCoords.y - position.y,
+      })
+    }
+  }
+
+  // Handle double click to start editing
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isEditing) {
+      setIsEditing(true)
+      setEditText(content)
+    }
+  }
+
+  // Handle text change
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setEditText(e.target.value)
+  }
+
+  // Handle key press in textarea
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setIsEditing(false)
+      setEditText(content)
+    }
   }
 
   // Handle mouse move for dragging
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) return
+    e.preventDefault()
+
+    const currentCanvasCoords = screenToCanvas(e.clientX, e.clientY)
+    const newPosition = {
+      x: currentCanvasCoords.x - dragStartOffset.x,
+      y: currentCanvasCoords.y - dragStartOffset.y,
+    }
+
+    onPositionChange(newPosition)
+  }
+
+  // Handle mouse up to stop dragging
+  const handleMouseUp = () => {
+    setIsDragging(false)
+  }
+
+  // Add event listeners for drag
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDragging) return
-
-      // Calculate new position in canvas coordinates
-      const canvasCoords = screenToCanvas(e.clientX, e.clientY)
-      const newPosition = {
-        x: canvasCoords.x - dragOffset.x,
-        y: canvasCoords.y - dragOffset.y,
-      }
-
-      // Update position
-      onPositionChange(newPosition)
-    }
-
-    const handleMouseUp = () => {
-      setIsDragging(false)
-    }
-
     if (isDragging) {
-      document.addEventListener("mousemove", handleMouseMove)
-      document.addEventListener("mouseup", handleMouseUp)
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', handleMouseUp)
     }
-
     return () => {
-      document.removeEventListener("mousemove", handleMouseMove)
-      document.removeEventListener("mouseup", handleMouseUp)
+      window.removeEventListener('mousemove', handleMouseMove)
+      window.removeEventListener('mouseup', handleMouseUp)
     }
-  }, [isDragging, dragOffset, onPositionChange, screenToCanvas])
+  }, [isDragging, handleMouseMove, handleMouseUp])
 
-  // Handle click outside to exit editing mode
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (isEditing && textRef.current && !textRef.current.contains(e.target as Node)) {
-        setIsEditing(false)
-      }
-    }
-
-    if (isEditing) {
-      document.addEventListener("mousedown", handleClickOutside)
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [isEditing])
+  // Calculate dimensions
+  const width = 400
+  const height = 300
 
   return (
     <div
-      ref={textRef}
+      ref={containerRef}
+      data-interactive="true"
       className={cn(
-        "absolute",
-        // Disable pointer events entirely if move tool is active
-        activeTool === 'move' ? "pointer-events-none" :
-          // Otherwise, apply appropriate cursor based on state
-          (isDragging ? "cursor-grabbing" : isEditing ? "cursor-text" : "cursor-grab"),
+        "absolute cursor-default select-none",
+        isDragging && "cursor-grabbing",
+        isSelected && "z-10"
       )}
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
-        zIndex: isSelected ? 10 : 1,
-        transform: `rotate(0deg)`,
-        transformOrigin: "center center",
-        transition: isDragging ? "none" : "transform 0.3s, box-shadow 0.3s",
+        width: `${width}px`,
+        height: `${height}px`,
+        pointerEvents: 'auto'
       }}
-      onClick={handleClick}
-      onMouseDown={(e) => {
-        if (e.button !== 0) return;
-
-        if (activeTool === "move") {
-          e.stopPropagation();
-          return;
-        }
-        handleStartDrag(e);
-      }}
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
     >
-      {isEditing ? (
-        <textarea
-          ref={inputRef}
-          className="bg-transparent p-2 resize-none border-none focus:outline-none min-w-[200px] min-h-[40px]"
-          value={content}
-          onChange={(e) => onContentChange(e.target.value)}
-          placeholder="Type something..."
-          onClick={handleTextareaClick}
-          style={{
-            fontSize: `${fontSize}px`,
-            color: color,
-            border: isSelected ? "1px dashed rgba(124, 58, 237, 0.8)" : "none",
-            background: isSelected ? "rgba(124, 58, 237, 0.1)" : "transparent",
-            fontFamily: "monospace",
-            lineHeight: "1.2",
-            width: "auto",
-            height: "auto",
-          }}
+      {/* Typewriter Paper */}
+      <div 
+        className={cn(
+          "w-full h-full bg-white shadow-lg p-6",
+          "border border-[#d4d4d4]",
+          isSelected && "ring-2 ring-blue-500"
+        )}
+        style={{
+          fontFamily: "'Courier Prime', monospace",
+          fontSize: `${fontSize}px`,
+          color: "#2C2C2C",
+          lineHeight: '1.5',
+          whiteSpace: 'pre-wrap',
+          borderRadius: '2px',
+          boxShadow: '3px 3px 10px rgba(0,0,0,0.2)',
+          position: 'relative'
+        }}
+      >
+        {isEditing ? (
+          <textarea
+            ref={textareaRef}
+            value={editText}
+            onChange={handleTextChange}
+            onKeyDown={handleKeyDown}
+            className="w-full h-full bg-transparent resize-none outline-none border-none"
+            style={{
+              fontFamily: "'Courier Prime', monospace",
+              fontSize: `${fontSize}px`,
+              color: "#2C2C2C",
+              lineHeight: '1.5',
+              minHeight: '280px'
+            }}
+            placeholder="Start typing..."
+          />
+        ) : (
+          <div className="w-full h-full min-h-[280px]">
+            {content || (isSelected ? "Double-click to add text" : "")}
+          </div>
+        )}
+      </div>
+
+      {showPreview && (
+        <TypewriterPreview
+          position={previewPosition}
+          zoom={zoom}
+          content={content}
+          fontSize={fontSize}
+          color={color}
         />
-      ) : (
-        <div
-          className={cn(
-            "p-2 whitespace-pre-wrap break-words",
-            isSelected && "border border-dashed border-[#7c3aed] bg-[#7c3aed]/10",
-          )}
-          style={{
-            fontSize: `${fontSize}px`,
-            color: color,
-            fontFamily: "monospace",
-            lineHeight: "1.2",
-            minWidth: "20px",
-            minHeight: "20px",
-          }}
-        >
-          {content || <span className="opacity-50">Click to edit text...</span>}
-        </div>
       )}
     </div>
   )

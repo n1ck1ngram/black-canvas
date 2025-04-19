@@ -46,9 +46,9 @@ export function BottomToolbar({
     }
   }, [activeTool])
 
-  // Update color picker visibility when spray tool is activated/deactivated
+  // Update color picker visibility when spray or pen tool is activated/deactivated
   useEffect(() => {
-    if (activeTool === "spray") {
+    if (activeTool === "spray" || activeTool === "pen") {
       setShowColorPicker(true)
     } else {
       setShowColorPicker(false)
@@ -209,10 +209,10 @@ export function BottomToolbar({
         )}
 
         {/* Toolbar container */}
-        <div className="flex items-center justify-center">
-          {/* Pointer Tool - Now separate */}
+        <div className="flex items-center gap-2 p-2 bg-[#1a1a1a] rounded-lg border border-white/10">
+          {/* Pointer tool */}
           <ToolCell
-            isActive={activeTool === "pointer" || activeTool === null}
+            isActive={activeTool === "pointer"}
             onClick={() => handleToolClick("pointer")}
             onMouseEnter={() => setHoveredTool("pointer")}
             onMouseLeave={() => setHoveredTool(null)}
@@ -221,19 +221,19 @@ export function BottomToolbar({
             <div className="relative w-full h-full flex items-center justify-center">
               <Image
                 src="/images/mouse-pointer-new.png"
-                alt="Select Tool"
-                width={48}
-                height={48}
+                alt="Pointer tool"
+                width={64}
+                height={64}
                 className={cn(
                   "object-contain transition-all",
-                  (activeTool === "pointer" || activeTool === null) ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
+                  activeTool === "pointer" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
                 )}
                 priority
               />
             </div>
           </ToolCell>
 
-          {/* Move Tool - Now separate */}
+          {/* Hand tool */}
           <ToolCell
             isActive={activeTool === "move"}
             onClick={() => handleToolClick("move")}
@@ -244,12 +244,35 @@ export function BottomToolbar({
             <div className="relative w-full h-full flex items-center justify-center">
               <Image
                 src="/images/move-tool.png"
-                alt="Move Tool"
-                width={52}
-                height={52}
+                alt="Hand tool"
+                width={64}
+                height={64}
                 className={cn(
-                  "object-contain transition-all filter",
+                  "object-contain transition-all",
                   activeTool === "move" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
+                )}
+                priority
+              />
+            </div>
+          </ToolCell>
+
+          {/* Pen tool */}
+          <ToolCell
+            isActive={activeTool === "pen"}
+            onClick={() => handleToolClick("pen")}
+            onMouseEnter={() => setHoveredTool("pen")}
+            onMouseLeave={() => setHoveredTool(null)}
+            isHovered={hoveredTool === "pen"}
+          >
+            <div className="relative w-full h-full flex items-center justify-center">
+              <Image
+                src="/images/pen-tool.png"
+                alt="Pen tool"
+                width={64}
+                height={64}
+                className={cn(
+                  "object-contain transition-all",
+                  activeTool === "pen" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
                 )}
                 priority
               />
@@ -365,29 +388,6 @@ export function BottomToolbar({
                 className={cn(
                   "object-contain transition-all",
                   activeTool === "tape" ? "brightness-[2.0] contrast-[1.1]" : "brightness-[1.25] contrast-[1.05]",
-                )}
-                priority
-              />
-            </div>
-          </ToolCell>
-
-          {/* Pen Tool - Added */}
-          <ToolCell
-            isActive={activeTool === "pen"}
-            onClick={() => handleToolClick("pen")}
-            onMouseEnter={() => setHoveredTool("pen")}
-            onMouseLeave={() => setHoveredTool(null)}
-            isHovered={hoveredTool === "pen"}
-          >
-            <div className="relative w-full h-full flex items-center justify-center">
-              <Image
-                src="/images/Pen-Tool.png"
-                alt="Pen Tool"
-                width={64}
-                height={64}
-                className={cn(
-                  "object-contain transition-all filter",
-                  activeTool === "pen" ? "brightness-[1.6] contrast-[1.25]" : "brightness-[0.75] contrast-[1.15]",
                 )}
                 priority
               />
