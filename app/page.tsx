@@ -173,9 +173,12 @@ export default function WhiteboardApp() {
 
   // State for spray paint
   const [sprayColor, setSprayColor] = useState("#7ab2ff") // Default blue color
-  const [isColorModalOpen, setIsColorModalOpen] = useState(false)
   const [brushSize, setBrushSize] = useState(20)
   const [selectedStrokeId, setSelectedStrokeId] = useState<string | null>(null)
+
+  // Separate state for pen tool
+  const [penColor, setPenColor] = useState("#7ab2ff")
+  const [penSize, setPenSize] = useState(20)
 
   // State for mouse position (for preview)
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
@@ -198,9 +201,11 @@ export default function WhiteboardApp() {
   const [selectedShapeType, setSelectedShapeType] = useState<ShapeType | null>(null)
   const [shapeColor, setShapeColor] = useState<string>("#FFFFFF") // Changed from #4B9FFF to #FFFFFF
 
-  // Add state for pen tool
-  const [penColor, setPenColor] = useState("#7ab2ff") // Default blue color
-  const [penSize, setPenSize] = useState(20)
+  // Add pen tip state
+  const [penTip, setPenTip] = useState<'round' | 'rectangle'>('round')
+
+  // Add pen opacity state with a default value of 1 (fully opaque)
+  const [penOpacity, setPenOpacity] = useState(1)
 
   // References
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -265,8 +270,8 @@ export default function WhiteboardApp() {
       // If hand tool is active, prevent default cursor logic
       if (activeTool === 'move') {
         // The container itself should have grab/grabbing cursor
-      } else if (activeTool === 'spray') {
-        // Spray tool manages its own cursor via EnhancedPaint
+      } else if (activeTool === 'spray' || activeTool === 'pen') {
+        // Spray tool and pen tool manage their own cursor via EnhancedPaint
       } else {
         // Default cursor for other states (e.g., pointer)
         containerRef.current.style.cursor = "default";
@@ -443,8 +448,8 @@ export default function WhiteboardApp() {
   // Handle canvas click
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent | MouseEvent) => {
-      // If spray tool is active, let EnhancedPaint handle the event exclusively
-      if (activeTool === "spray") {
+      // If spray tool or pen tool is active, let EnhancedPaint handle the event exclusively
+      if (activeTool === "spray" || activeTool === "pen") {
         return;
       }
       
@@ -601,7 +606,7 @@ export default function WhiteboardApp() {
     [activeTool, setSelectedStrokeId]
   )
 
-  // Handle color selection for both spray and pen tools
+  // Handle color selection
   const handleColorSelect = (color: string) => {
     if (activeTool === "spray") {
       setSprayColor(color)
@@ -610,7 +615,7 @@ export default function WhiteboardApp() {
     }
   }
 
-  // Handle brush size change for both spray and pen tools
+  // Handle brush size change
   const handleBrushSizeChange = (size: number) => {
     if (activeTool === "spray") {
       setBrushSize(size)
@@ -1103,6 +1108,17 @@ export default function WhiteboardApp() {
     setShapes((prev) => prev.map((shape) => (shape.id === id ? { ...shape, color } : shape)))
   }
 
+  // Handle pen tip change - Ensure type matches new definition
+  const handlePenTipChange = (tip: 'round' | 'rectangle') => {
+    console.log(`[handlePenTipChange] Pen tip selected: ${tip}`)
+    setPenTip(tip)
+  }
+
+  // Add opacity change handler
+  const handleOpacityChange = useCallback((newOpacity: number) => {
+    setPenOpacity(newOpacity)
+  }, [])
+
   return (
     <div className="flex flex-col h-screen bg-black text-gray-200">
       {/* Top Navigation */}
@@ -1150,24 +1166,52 @@ export default function WhiteboardApp() {
             }}
           ></div>
 
-          {/* Enhanced Paint Canvas */}
-          <div style={{ zIndex: 20 }} className="absolute inset-0"> {/* z-index for paint, removed pointerEvents: 'none' */}
-            <EnhancedPaint
-              color={sprayColor}
-              isActive={activeTool === "spray"}
-              zoom={zoom}
-              pan={pan}
-              screenToCanvas={screenToCanvas}
-              brushSize={brushSize}
-              onClearRef={clearCanvasRef}
-              onSelectStroke={handleStrokeSelect}
-              selectedStrokeId={selectedStrokeId}
-              alwaysSelectable={true}
-              stickyToolActive={activeTool === "sticky"}
-              deleteStrokeRef={deleteStrokeRef}
-              activeTool={activeTool}
-              onBackgroundClick={handleDeselectAll}
-            />
+          {/* Drawing Layers Container */}
+          <div className="absolute inset-0" style={{ zIndex: 20 }}>
+            {/* Enhanced Paint Canvas - Spray Paint Layer */}
+            <div style={{ position: 'absolute', inset: 0, zIndex: activeTool === 'spray' ? 21 : 19 }}>
+              <EnhancedPaint
+                color={sprayColor}
+                isActive={activeTool === "spray"}
+                zoom={zoom}
+                pan={pan}
+                screenToCanvas={screenToCanvas}
+                brushSize={brushSize}
+                onClearRef={clearCanvasRef}
+                onSelectStroke={handleStrokeSelect}
+                selectedStrokeId={selectedStrokeId}
+                alwaysSelectable={true}
+                stickyToolActive={activeTool === "sticky"}
+                deleteStrokeRef={deleteStrokeRef}
+                activeTool={activeTool}
+                onBackgroundClick={handleDeselectAll}
+              />
+            </div>
+
+            {/* Pen Tool Canvas Layer */}
+            <div style={{ position: 'absolute', inset: 0, zIndex: activeTool === 'pen' ? 21 : 19 }}>
+              <PenTool
+                color={penColor}
+                isActive={activeTool === "pen"}
+                zoom={zoom}
+                pan={pan}
+                screenToCanvas={screenToCanvas}
+                brushSize={penSize}
+                onClearRef={clearCanvasRef}
+                onSelectStroke={handleStrokeSelect}
+                selectedStrokeId={selectedStrokeId}
+                alwaysSelectable={true}
+                stickyToolActive={activeTool === "sticky"}
+                deleteStrokeRef={deleteStrokeRef}
+                activeTool={activeTool}
+                onBackgroundClick={handleDeselectAll}
+                onColorSelect={handleColorSelect}
+                selectedColor={penColor}
+                onBrushSizeChange={handleBrushSizeChange}
+                penTip={penTip}
+                opacity={penOpacity}
+              />
+            </div>
           </div>
 
           {/* Interactive Elements Container */}
@@ -1289,17 +1333,6 @@ export default function WhiteboardApp() {
           {renderPreviews(activeTool, mousePosition, canvasToScreen, zoom, selectedShapeType, shapeColor)}
         </div>
 
-        {/* Pen Tool */}
-        {activeTool === "pen" && (
-          <PenTool
-            activeTool={activeTool}
-            onColorSelect={handleColorSelect}
-            selectedColor={penColor}
-            brushSize={penSize}
-            onBrushSizeChange={handleBrushSizeChange}
-          />
-        )}
-
         {/* Bottom Toolbar */}
         <BottomToolbar
           activeTool={activeTool}
@@ -1308,11 +1341,15 @@ export default function WhiteboardApp() {
           selectedColor={activeTool === "spray" ? sprayColor : activeTool === "pen" ? penColor : "#7ab2ff"}
           brushSize={activeTool === "spray" ? brushSize : activeTool === "pen" ? penSize : 20}
           onBrushSizeChange={handleBrushSizeChange}
+          penTip={penTip}
+          onPenTipChange={handlePenTipChange}
+          opacity={penOpacity}
+          onOpacityChange={handleOpacityChange}
         />
 
         {/* Shapes Toolbar - Positioned at the bottom */}
         {activeTool === "shapes" && (
-          <div className="absolute bottom-28 left-1/2 transform -translate-x-1/2 z-50">
+          <div className="absolute bottom-[140px] left-1/2 transform -translate-x-1/2 z-50">
             <ShapesToolbar
               onShapeSelect={handleShapeSelect}
               onColorSelect={handleShapeColorSelect}

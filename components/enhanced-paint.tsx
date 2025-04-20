@@ -154,19 +154,43 @@ export function EnhancedPaint({
         const centerY = canvas.height / 2;
         const radius = cursorSize / 2;
 
-        // Draw outer circle (white)
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
+        if (activeTool === "pen") {
+          // For pen tool, create a more pen-like cursor
+          // Draw outer circle (white)
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
 
-        // Draw inner circle (color)
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.stroke();
+          // Draw inner circle (color)
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          // Add a small dot in the center for precision
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, 1, 0, Math.PI * 2);
+          ctx.fillStyle = "white";
+          ctx.fill();
+        } else {
+          // For spray tool, use the original cursor style
+          // Draw outer circle (white)
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+
+          // Draw inner circle (color)
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, radius - 1, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
 
         // Convert to data URL with explicit PNG format
         const dataUrl = canvas.toDataURL('image/png');
@@ -197,7 +221,7 @@ export function EnhancedPaint({
         containerRef.current.style.setProperty("cursor", "default", "important");
       }
     };
-  }, [isActive, color, brushSize, zoom]);
+  }, [isActive, color, brushSize, zoom, activeTool]);
 
   // Redraw all strokes
   useEffect(() => {
@@ -230,7 +254,7 @@ export function EnhancedPaint({
   const drawSoftCircle = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, strokeColor: string) => {
     ctx.save()
 
-    // Create radial gradient for soft edges
+    // Create a radial gradient for the spray effect
     const gradient = ctx.createRadialGradient(x, y, 0, x, y, size)
     gradient.addColorStop(0, strokeColor)
     gradient.addColorStop(0.5, strokeColor + "80") // 50% opacity

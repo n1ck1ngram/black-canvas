@@ -5,6 +5,7 @@ import { useState, useEffect } from "react"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
 import { HexColorPicker } from "react-colorful"
+import { Button } from "@/components/ui/button"
 
 type Tool = "pointer" | "move" | "pen" | "sticky" | "text" | "spray" | "shapes" | "tape" | "typewriter" | null
 
@@ -15,6 +16,10 @@ interface BottomToolbarProps {
   selectedColor?: string
   brushSize?: number
   onBrushSizeChange?: (size: number) => void
+  penTip?: 'round' | 'rectangle'
+  onPenTipChange?: (tip: 'round' | 'rectangle') => void
+  opacity?: number
+  onOpacityChange?: (opacity: number) => void
 }
 
 interface ColorOption {
@@ -30,6 +35,10 @@ export function BottomToolbar({
   selectedColor = "#7ab2ff",
   brushSize = 20,
   onBrushSizeChange,
+  penTip = 'round',
+  onPenTipChange,
+  opacity = 1,
+  onOpacityChange,
 }: BottomToolbarProps) {
   const [hoveredTool, setHoveredTool] = useState<Tool>(null)
   const [showColorPicker, setShowColorPicker] = useState(false)
@@ -104,30 +113,50 @@ export function BottomToolbar({
     { name: "Color Picker", value: "picker" }
   ]
 
-  // Calculate the slider position percentage
-  const sliderPosition = ((brushSize - 5) / 45) * 100
+  // Calculate the slider position percentage based on the active tool
+  const sliderPosition = (() => {
+    if (activeTool === 'pen') {
+      // For pen tool: 5-50px range
+      return ((brushSize - 5) / 45) * 100
+    } else {
+      // For spray tool: 5-50px range
+      return ((brushSize - 5) / 45) * 100
+    }
+  })()
+
+  // Calculate opacity slider position (0-100%)
+  const opacityPosition = Math.round(opacity * 100)
 
   return (
     <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 bottom-toolbar-container">
       <div className="relative">
         {/* Color picker that appears above the toolbar when spray tool is active */}
         {showColorPicker && (
-          <div className="absolute bottom-[100px] left-1/2 transform -translate-x-1/2 flex items-center gap-3 bg-[#2a2a2a] rounded-lg border border-[#333333] shadow-lg p-3 transition-all duration-200 ease-in-out">
+          <div className="absolute bottom-[120px] left-1/2 transform -translate-x-1/2 flex items-start gap-3 bg-[#2a2a2a] rounded-lg border border-[#333333] shadow-lg p-3 transition-all duration-200 ease-in-out">
             {/* Brush size control */}
-            <div className="flex flex-col items-center mr-2">
-              <div className="text-sm text-gray-300 mb-3">Size: {brushSize}px</div>
-              <div className="w-24 flex items-center justify-center">
+            <div className="flex flex-col items-start z-20">
+              <div className="text-sm text-gray-300 mb-2">Size: {brushSize}px</div>
+              <div className="w-32 flex items-center justify-center">
                 <div className="relative w-full h-8 flex items-center">
                   {/* Track background */}
                   <div className="absolute h-1 w-full bg-[#555555] rounded-full"></div>
 
                   {/* Active track */}
-                  <div className="absolute h-1 bg-[#7ab2ff] rounded-full" style={{ width: `${sliderPosition}%` }}></div>
+                  <div 
+                    className="absolute h-1 bg-[#7ab2ff] rounded-full" 
+                    style={{ 
+                      width: `${sliderPosition}%`,
+                      transition: 'width 0.1s ease-out'
+                    }}
+                  ></div>
 
                   {/* Thumb */}
                   <div
-                    className="absolute h-4 w-4 bg-white rounded-full shadow-md transform -translate-x-1/2"
-                    style={{ left: `${sliderPosition}%` }}
+                    className="absolute h-4 w-4 bg-white rounded-full shadow-md transform -translate-x-1/2 cursor-pointer hover:scale-110 transition-transform"
+                    style={{ 
+                      left: `${sliderPosition}%`,
+                      transition: 'left 0.1s ease-out'
+                    }}
                   ></div>
 
                   {/* Hidden input for interaction */}
@@ -138,16 +167,67 @@ export function BottomToolbar({
                     value={brushSize}
                     onChange={(e) => onBrushSizeChange?.(Number(e.target.value))}
                     className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                    style={{ height: '32px' }}
                   />
                 </div>
               </div>
             </div>
 
             {/* Divider */}
-            <div className="h-16 w-px bg-[#444444]"></div>
+            <div className="h-16 w-px bg-[#444444] z-10"></div>
+
+            {/* Opacity control - Only show for pen tool */}
+            {activeTool === 'pen' && (
+              <>
+                <div className="flex flex-col items-start z-20">
+                  <div className="text-sm text-gray-300 mb-2">Opacity: {opacityPosition}%</div>
+                  <div className="w-32 flex items-center justify-center">
+                    <div className="relative w-full h-8 flex items-center">
+                      {/* Track background */}
+                      <div className="absolute h-1 w-full bg-[#555555] rounded-full"></div>
+
+                      {/* Active track */}
+                      <div 
+                        className="absolute h-1 bg-[#7ab2ff] rounded-full" 
+                        style={{ 
+                          width: `${opacityPosition}%`,
+                          transition: 'width 0.1s ease-out'
+                        }}
+                      ></div>
+
+                      {/* Thumb */}
+                      <div
+                        className="absolute h-4 w-4 bg-white rounded-full shadow-md transform -translate-x-1/2 cursor-pointer hover:scale-110 transition-transform"
+                        style={{ 
+                          left: `${opacityPosition}%`,
+                          transition: 'left 0.1s ease-out'
+                        }}
+                      ></div>
+
+                      {/* Hidden input for interaction */}
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={opacityPosition}
+                        onChange={(e) => {
+                          const newOpacity = Number(e.target.value) / 100
+                          onOpacityChange?.(newOpacity)
+                        }}
+                        className="absolute inset-0 w-full opacity-0 cursor-pointer"
+                        style={{ height: '32px' }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Divider after opacity slider */}
+                <div className="h-16 w-px bg-[#444444] z-10"></div>
+              </>
+            )}
 
             {/* Color picker */}
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2 z-10">
               {/* Top row */}
               <div className="flex items-center gap-2">
                 {colorOptions.slice(0, 10).map((color) => (
@@ -193,6 +273,46 @@ export function BottomToolbar({
                 ))}
               </div>
             </div>
+
+            {/* Pen tip options - only show for pen tool */}
+            {activeTool === 'pen' && (
+              <>
+                <div className="h-16 w-px bg-[#444444] z-10"></div>
+                <div className="flex flex-col gap-2 z-10">
+                  <div className="text-sm text-gray-300 mb-1">Pen Tips:</div>
+                  <div className="flex items-center gap-2">
+                    {/* Round Tip Button */}
+                    <button
+                      onClick={() => onPenTipChange?.('round')}
+                      className={cn(
+                        "w-8 h-8 rounded transition-all duration-150 flex items-center justify-center text-white",
+                        penTip === 'round' ? "bg-[#444444]" : "bg-[#333333] hover:bg-[#3a3a3a]",
+                        penTip === 'round' ? "text-white" : "text-gray-400"
+                      )}
+                      title="Round Tip"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2"/>
+                      </svg>
+                    </button>
+                    {/* Rectangle Tip Button */}
+                    <button
+                      onClick={() => onPenTipChange?.('rectangle')}
+                      className={cn(
+                        "w-8 h-8 rounded transition-all duration-150 flex items-center justify-center text-white",
+                        penTip === 'rectangle' ? "bg-[#444444]" : "bg-[#333333] hover:bg-[#3a3a3a]",
+                        penTip === 'rectangle' ? "text-white" : "text-gray-400"
+                      )}
+                      title="Rectangle Tip"
+                    >
+                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                         <rect x="4" y="4" width="16" height="16" stroke="currentColor" strokeWidth="2"/>
+                       </svg>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         )}
 
